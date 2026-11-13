@@ -20,7 +20,7 @@ type IntArray = npt.NDArray[np.int32]
 class GridDefinition(BaseModel):
     """A north-up grid of square cells."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str
     crs: str

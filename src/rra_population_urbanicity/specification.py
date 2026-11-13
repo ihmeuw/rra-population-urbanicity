@@ -23,6 +23,7 @@ from rra_population_urbanicity.classify.degurba.parameters import (
     DegurbaParameters,
 )
 from rra_population_urbanicity.constants import TimePoint
+from rra_population_urbanicity.grid import GRIDS, GridDefinition
 
 # Versions of rra-population-model, e.g. 2026_10_02.001.
 ModelVersion = Annotated[str, StringConstraints(pattern=r"^\d{4}_\d{2}_\d{2}\.\d{3}$")]
@@ -135,12 +136,35 @@ class MethodSpec(_Spec):
 
 
 class ClassificationSpecification(_Spec):
+    """A classification's inputs, grid, time points and method.
+
+    `grid` names a grid in `GRIDS`. Once validated, it holds the grid's full
+    definition, which is what a saved specification records. A saved
+    definition must match the named grid, so a specification cannot describe
+    a grid the code does not define.
+    """
+
     population: PopulationSource
-    grid: Literal["moll_1km"]
+    grid: GridDefinition
     land: LandSource
     built: BuiltSource | None = None
     time_points: list[TimePoint] = Field(min_length=1)
     method: MethodSpec
+
+    @field_validator("grid", mode="before")
+    @classmethod
+    def resolve_grid(cls, grid: Any) -> GridDefinition:
+        definition = (
+            None if isinstance(grid, str) else GridDefinition.model_validate(grid)
+        )
+        name = grid if definition is None else definition.name
+        if name not in GRIDS:
+            msg = f"Unknown grid {name}. Choose from {list(GRIDS)}."
+            raise ValueError(msg)
+        if definition is not None and definition != GRIDS[name]:
+            msg = f"The grid definition does not match the {name} grid."
+            raise ValueError(msg)
+        return GRIDS[name]
 
     @field_validator("time_points")
     @classmethod

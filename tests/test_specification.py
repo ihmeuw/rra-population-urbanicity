@@ -6,6 +6,7 @@ import yaml
 from pydantic import ValidationError
 
 from rra_population_urbanicity.classify.degurba.parameters import PARAMETER_SETS
+from rra_population_urbanicity.grid import GRIDS
 from rra_population_urbanicity.specification import ClassificationSpecification
 
 SPECIFICATION_DIR = Path(__file__).parents[1] / "specifications"
@@ -30,6 +31,16 @@ def test_specifications_round_trip_through_yaml(path: Path, tmp_path: Path) -> N
     assert (
         ClassificationSpecification.from_yaml(tmp_path / "specification.yaml") == spec
     )
+
+
+def test_a_saved_specification_records_the_full_grid_definition(
+    tmp_path: Path,
+) -> None:
+    spec = ClassificationSpecification.from_yaml(V2_REPRODUCTION)
+    spec.to_yaml(tmp_path / "specification.yaml")
+    saved = yaml.safe_load((tmp_path / "specification.yaml").read_text())
+    assert spec.grid == GRIDS["moll_1km"]
+    assert saved["grid"] == GRIDS["moll_1km"].model_dump(mode="json")
 
 
 def test_a_parameter_set_resolves_to_the_same_parameters_every_time() -> None:
@@ -70,6 +81,12 @@ def test_the_v1_reproduction_overrides_nine_parameters() -> None:
         (("time_points",), ["2020"], "String should match pattern"),
         (("time_points",), ["2020q1", "2020q1"], "Time points must be unique"),
         (("built",), None, "no built-up source"),
+        (("grid",), "no_such_grid", "Unknown grid"),
+        (
+            ("grid",),
+            {**GRIDS["moll_1km"].model_dump(), "cell_size": 500.0},
+            "does not match the moll_1km grid",
+        ),
     ],
 )
 def test_invalid_specifications_are_rejected(
