@@ -3,10 +3,12 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 import rasterio
 import yaml
 from click.testing import CliRunner
+from rasterio.windows import Window
 from rra_tools.shell_tools import mkdir
 
 from rra_population_urbanicity import constants as puc
@@ -15,6 +17,7 @@ from rra_population_urbanicity.classify.base import ClassScheme
 from rra_population_urbanicity.classify.degurba import scheme
 from rra_population_urbanicity.cli import purun
 from rra_population_urbanicity.data import UrbanicityData
+from rra_population_urbanicity.grid import GridDefinition
 from rra_population_urbanicity.specification import ClassificationSpecification
 from tests.conftest import TINY, ghsl_spec
 
@@ -123,3 +126,18 @@ def test_the_command_runs_a_specification(ghsl_world: Path) -> None:
     path = UrbanicityData(ghsl_world).class_raster_path(result.output.strip(), "2025q1")
     with rasterio.open(path) as src:
         assert np.all(src.read(1)[2:7, 2:7] == scheme.URBAN_CENTRE)
+
+
+def test_cells_outside_the_projection_with_data_are_classified(
+    ghsl_world: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def nowhere(self: GridDefinition, window: Window) -> npt.NDArray[np.bool_]:
+        return np.zeros((int(window.height), int(window.width)), dtype=bool)
+
+    monkeypatch.setattr(GridDefinition, "domain", nowhere)
+    _, root = run(ghsl_world)
+    with rasterio.open(root / "classes" / "2020q1.tif") as src:
+        codes = src.read(1)
+    assert (codes[2:7, 2:7] == scheme.URBAN_CENTRE).all()  # people
+    assert codes[0, 0] == scheme.VERY_LOW_DENSITY_RURAL  # land
+    assert (codes[:, 9] == scheme.NODATA).all()  # the river: no data of any kind

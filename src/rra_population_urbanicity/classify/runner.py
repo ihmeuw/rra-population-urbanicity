@@ -64,7 +64,12 @@ def load_inputs(
     time_point: str,
     domain: BoolArray,
 ) -> rules.DegurbaInputs:
-    """The inputs of one time point on the whole grid."""
+    """The inputs of one time point on the whole grid.
+
+    `domain` is the cells the grid's projection covers. Cells just outside it
+    that hold people, land or built-up are classified too, so nobody is left
+    without a class.
+    """
     grid, window = spec.grid, spec.grid.full_window
     population = ghsl.load(data, spec.population, grid, time_point, window)
     land = ghsl.load(data, spec.land, grid, time_point, window)
@@ -72,6 +77,7 @@ def load_inputs(
         built = np.zeros_like(population)
     else:
         built = ghsl.load(data, spec.built, grid, time_point, window)
+    domain = domain | (population > 0) | (land > 0) | (built > 0)
     return rules.DegurbaInputs(population, land, built, domain, grid.cell_area_km2)
 
 
