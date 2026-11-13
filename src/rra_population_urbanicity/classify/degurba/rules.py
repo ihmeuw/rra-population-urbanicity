@@ -127,7 +127,7 @@ def land_for_density(
             raise ValueError(msg)
         imputed = np.minimum(inputs.population * built_per_person, 1.0)
         fill = np.where((built == 0) & (inputs.population > 0), imputed, built)
-    raised = (inputs.land < params.water_land_min) & (fill > 0)
+    raised = (inputs.land == 0) & (fill > 0)
     return np.where(raised, np.maximum(fill, params.water_land_min), inputs.land)
 
 

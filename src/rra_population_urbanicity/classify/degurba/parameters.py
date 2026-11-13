@@ -27,12 +27,13 @@ class DegurbaParameters(BaseModel):
     # A cell is on land if at least this share of it is permanent land, or if
     # it is populated or built (Table 22, classes 10 and 11).
     water_land_min: float = Field(ge=0, le=1)
-    # How land is counted where people or buildings sit on cells that are
-    # mostly water (Figure 28's "density on land" step):
+    # How land is counted where people or buildings sit on cells with no land
+    # at all (Figure 28's "density on land" step). Cells with any land keep
+    # their land share; GHS-SMOD V2.0's 11/12 boundary shows this.
     #   none: divide by the land share as it is;
-    #   built_up: raise the land share of built-up cells on water to the larger
-    #     of `water_land_min` and their built-up share;
-    #   built_up_and_population: also give populated cells on water with no
+    #   built_up: raise the land share of built-up cells with no land to the
+    #     larger of `water_land_min` and their built-up share;
+    #   built_up_and_population: also give populated cells with no land and no
     #     built-up a built-up share of population times the global average
     #     built-up per person, and raise them the same way.
     density_on_land: Literal["none", "built_up", "built_up_and_population"]
@@ -116,7 +117,8 @@ class DegurbaParameters(BaseModel):
 GHSL_R2023A = DegurbaParameters(
     strict_thresholds=False,
     water_land_min=0.5,
-    # The fullest reading of the Figure 28 caption; to be tested on the raster.
+    # The fullest reading of the Figure 28 caption, which GHS-SMOD V2.0 bears out
+    # for cells with no land.
     density_on_land="built_up_and_population",
     uc_density=1500,
     uc_size=50_000,

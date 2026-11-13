@@ -289,15 +289,16 @@ def test_built_up_on_water_counts_as_land_only_when_it_reaches_land() -> None:
 @pytest.mark.parametrize(
     ("rule", "expected"),
     [
-        ("none", [0.1, 0.1, 0.1, 0.8]),
-        ("built_up", [0.5, 0.7, 0.1, 0.8]),
-        ("built_up_and_population", [0.5, 0.7, 0.5, 0.8]),
+        ("none", [0.0, 0.0, 0.0, 0.1]),
+        ("built_up", [0.5, 0.7, 0.0, 0.1]),
+        ("built_up_and_population", [0.5, 0.7, 0.5, 0.1]),
     ],
 )
 def test_density_on_land_readings(rule: str, expected: list[float]) -> None:
+    # Only cells with no land are raised; a cell with a little land keeps it.
     population = np.full((1, 4), 200.0)
-    land = np.array([[0.1, 0.1, 0.1, 0.8]])
-    built = np.array([[0.2, 0.7, 0.0, 0.0]])
+    land = np.array([[0.0, 0.0, 0.0, 0.1]])
+    built = np.array([[0.2, 0.7, 0.0, 0.3]])
     land_for_density = rules.land_for_density(
         scene(population, land, built),
         built,
@@ -367,14 +368,14 @@ def test_the_ghsl_r2023a_parameters_run_end_to_end() -> None:
     population = np.zeros((14, 14))
     population[6:12, 6:12] = 2000  # 72,000 people
     land = np.ones_like(population)
-    village = np.s_[:3, :3]  # 5,400 people on cells that are mostly water
+    village = np.s_[:3, :3]  # 5,400 people on cells with no land
     population[village] = 600
-    land[village] = 0.1
+    land[village] = 0.0
     codes = rules.classify(
         scene(population, land), GHSL_R2023A, built_threshold=0.3, built_per_person=1e-4
     )
     assert (codes[6:12, 6:12] == scheme.URBAN_CENTRE).all()
-    # On land raised to half of each cell the village is 1,200/km²; on the
-    # raw land share it would be 6,000/km², and a dense urban cluster.
+    # On land raised to half of each cell the village is 1,200/km²; on no land
+    # its density would be infinite, and it would be a dense urban cluster.
     assert (codes[village] == scheme.SEMI_DENSE_URBAN_CLUSTER).all()
     assert (classify(population, land)[village] == scheme.DENSE_URBAN_CLUSTER).all()
