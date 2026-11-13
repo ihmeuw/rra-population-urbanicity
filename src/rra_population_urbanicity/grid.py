@@ -5,16 +5,24 @@ cell that contains its centre, through `pixel_to_cell`. The grid a method
 classifies is therefore exactly what the pixel-level products see.
 """
 
+import math
+
 import numpy as np
 import numpy.typing as npt
 import pyproj
 from affine import Affine
 from pydantic import BaseModel, ConfigDict
+from rasterio import windows
+from rasterio.windows import Window
 
 from rra_population_urbanicity import constants as puc
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int32]
+type BoolArray = npt.NDArray[np.bool_]
+
+# Rows transformed at a time when computing a grid's domain.
+DOMAIN_STRIP_ROWS = 1000
 
 
 class GridDefinition(BaseModel):
@@ -37,6 +45,48 @@ class GridDefinition(BaseModel):
     @property
     def shape(self) -> tuple[int, int]:
         return self.n_rows, self.n_cols
+
+    @property
+    def full_window(self) -> Window:
+        return Window(0, 0, self.n_cols, self.n_rows)
+
+    @property
+    def cell_area_km2(self) -> float:
+        return self.cell_size**2 / 1e6
+
+    def domain(self, window: Window) -> BoolArray:
+        """The cells of a window whose centres the projection maps to the globe.
+
+        PROJ returns infinite coordinates for points outside the area a
+        projection covers, such as the corners of the rectangular Mollweide
+        grid outside its ellipse.
+        """
+        transform = windows.transform(window, self.transform)
+        to_lonlat = pyproj.Transformer.from_crs(self.crs, "EPSG:4326", always_xy=True)
+        n_rows, n_cols = int(window.height), int(window.width)
+        result = np.empty((n_rows, n_cols), dtype=bool)
+        for start in range(0, n_rows, DOMAIN_STRIP_ROWS):
+            rows = min(DOMAIN_STRIP_ROWS, n_rows - start)
+            x, y = pixel_centres(
+                transform @ Affine.translation(0, start), (rows, n_cols)
+            )
+            lon, _ = to_lonlat.transform(x, y)
+            result[start : start + rows] = np.isfinite(lon)
+        return result
+
+    def window_for_bounds(
+        self, west: float, south: float, east: float, north: float
+    ) -> Window:
+        """The smallest window of cells covering a longitude/latitude box."""
+        to_grid = pyproj.Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
+        x0, y0, x1, y1 = to_grid.transform_bounds(
+            west, south, east, north, densify_pts=21
+        )
+        col0 = max(math.floor((x0 - self.x_min) / self.cell_size), 0)
+        col1 = min(math.ceil((x1 - self.x_min) / self.cell_size), self.n_cols)
+        row0 = max(math.floor((self.y_max - y1) / self.cell_size), 0)
+        row1 = min(math.ceil((self.y_max - y0) / self.cell_size), self.n_rows)
+        return Window(col0, row0, col1 - col0, row1 - row0)
 
     def cell_index(self, x: FloatArray, y: FloatArray) -> tuple[IntArray, IntArray]:
         """Return the row and column of the cell containing each point.

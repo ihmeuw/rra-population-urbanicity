@@ -7,6 +7,10 @@ grids/<grid>/<layer>/<source>/<version components...>/<time point>.tif
     Input layers on a classification grid, shared by every classification
     that uses the same source version. Layers that do not vary in time use
     the time point "static".
+classifications/<version>/
+    One run of a classification specification: the saved specification,
+    the class scheme, a manifest of what the run resolved, and a class raster
+    per time point under classes/.
 """
 
 from pathlib import Path
@@ -35,6 +39,16 @@ class UrbanicityData:
 
     def reference_root(self, provider: str, product: str, release: str) -> Path:
         return self.root / "reference" / provider / product / release
+
+    @property
+    def classifications_root(self) -> Path:
+        return self.root / "classifications"
+
+    def classification_root(self, version: str) -> Path:
+        return self.classifications_root / version
+
+    def class_raster_path(self, version: str, time_point: str) -> Path:
+        return self.classification_root(version) / "classes" / f"{time_point}.tif"
 
     def grid_path(
         self, grid: str, layer: Layer, source: GridSource, time_point: str

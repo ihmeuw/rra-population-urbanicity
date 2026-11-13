@@ -131,22 +131,46 @@ def land_for_density(
     return np.where(raised, np.maximum(fill, params.water_land_min), inputs.land)
 
 
+@dataclass(frozen=True)
+class Prepared:
+    """The inputs as the rules use them."""
+
+    built: FloatArray  # built-up that reaches land (fn 34)
+    land: FloatArray  # land share after the density-on-land rule
+    density: FloatArray  # people per km² of that land
+    built_on_land: FloatArray  # built-up share of that land
+
+
+def prepare(
+    inputs: DegurbaInputs,
+    params: DegurbaParameters,
+    built_per_person: float | None,
+) -> Prepared:
+    built = retain_built_on_land(inputs.built, inputs.land)
+    land = land_for_density(inputs, built, params, built_per_person)
+    return Prepared(
+        built=built,
+        land=land,
+        density=per_land(inputs.population, land, inputs.cell_area_km2),
+        built_on_land=per_land(built, land),
+    )
+
+
 def optimal_built_threshold(
     population: FloatArray,
-    density: FloatArray,
-    built: FloatArray,
-    land: FloatArray,
+    prepared: Prepared,
     params: DegurbaParameters,
 ) -> float:
     """The built-up threshold computed from the data (fn 30).
 
     The average built-up share in rook clusters of cells at or above the
     urban-centre density that hold at least `built_threshold_cluster_size`
-    people. `land` is the land share after the density-on-land rule.
+    people, averaged as `built_threshold_average` says.
     """
     strict = params.strict_thresholds
     labels, n = label(
-        passes(density, params.uc_density, strict=strict), params.uc_contiguity
+        passes(prepared.density, params.uc_density, strict=strict),
+        params.uc_contiguity,
     )
     large = passes(
         cluster_sums(labels, n, population),
@@ -158,10 +182,10 @@ def optimal_built_threshold(
         msg = "No cluster is large enough to compute the built-up threshold."
         raise ValueError(msg)
     if params.built_threshold_average == "cell_mean_land":
-        return float(per_land(built[cells], land[cells]).mean())
+        return float(prepared.built_on_land[cells].mean())
     if params.built_threshold_average == "area_ratio":
-        return float(built[cells].sum() / land[cells].sum())
-    return float(built[cells].mean())
+        return float(prepared.built[cells].sum() / prepared.land[cells].sum())
+    return float(prepared.built[cells].mean())
 
 
 def dense_clusters(
@@ -338,11 +362,12 @@ def classify(
         raise ValueError(msg)
     strict = params.strict_thresholds
     population = inputs.population
-
-    built = retain_built_on_land(inputs.built, inputs.land)
-    land = land_for_density(inputs, built, params, built_per_person)
-    density = per_land(population, land, inputs.cell_area_km2)
-    built_on_land = per_land(built, land)
+    prepared = prepare(inputs, params, built_per_person)
+    built, density, built_on_land = (
+        prepared.built,
+        prepared.density,
+        prepared.built_on_land,
+    )
     # Populated or mostly land: the cells the majority rule counts (fn 29).
     eligible = (population > 0) | (inputs.land >= params.water_land_min)
     on_land = eligible | (built > 0)

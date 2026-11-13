@@ -66,3 +66,12 @@ def test_reference_root(tmp_path: Path) -> None:
 
 def test_the_default_root_is_the_output_root() -> None:
     assert UrbanicityData().root == puc.URBANICITY_ROOT
+
+
+def test_classification_paths(tmp_path: Path) -> None:
+    data = UrbanicityData(tmp_path)
+    root = tmp_path / "classifications" / "2026_11_13.001"
+    assert data.classification_root("2026_11_13.001") == root
+    assert data.class_raster_path("2026_11_13.001", "2020q1") == (
+        root / "classes" / "2020q1.tif"
+    )

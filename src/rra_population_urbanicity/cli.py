@@ -1,6 +1,6 @@
 import click
 
-from rra_population_urbanicity import reference
+from rra_population_urbanicity import classify, reference
 
 
 @click.group()
@@ -15,7 +15,7 @@ def putask() -> None:
 
 # Each stage module registers its workflow commands in RUNNERS and its
 # individual tasks in TASK_RUNNERS. A stage may have only one of the two.
-for module in [reference]:
+for module in [reference, classify]:
     stage_name = module.__name__.split(".")[-1]
     for parent, commands in (
         (purun, getattr(module, "RUNNERS", {})),

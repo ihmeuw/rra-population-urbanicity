@@ -144,6 +144,8 @@ class ClassificationSpecification(_Spec):
     a grid the code does not define.
     """
 
+    # Assigned when the specification is run; committed specifications have none.
+    version: str | None = None
     population: PopulationSource
     grid: GridDefinition
     land: LandSource

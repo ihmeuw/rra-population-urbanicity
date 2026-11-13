@@ -1,10 +1,13 @@
 import math
 
 import numpy as np
+import pyproj
 import pytest
 from affine import Affine
+from rasterio.windows import Window
 
 from rra_population_urbanicity import constants as puc
+from rra_population_urbanicity import grid
 from rra_population_urbanicity.grid import GRIDS, GridDefinition, pixel_to_cell
 
 # The Populace model grid: 40 m World Cylindrical Equal Area, in 8192-pixel blocks.
@@ -86,3 +89,31 @@ def test_points_outside_the_grid_are_rejected() -> None:
     y = np.zeros(3)
     with pytest.raises(ValueError, match="2 points fall outside the moll_1km grid"):
         MOLL_1KM.cell_index(x, y)
+
+
+def test_the_domain_is_the_area_the_projection_covers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(grid, "DOMAIN_STRIP_ROWS", 2)  # several strips in one window
+    # Just south of the equator, the ellipse ends 18,040,096 m east of the
+    # central meridian: the centre of the last column, at 18,040,500 m, is past it.
+    east_edge = MOLL_1KM.domain(Window(36_077, 8999, 5, 3))
+    assert east_edge.tolist() == [[True, True, True, True, False]] * 3
+    assert not MOLL_1KM.domain(Window(0, 0, 4, 4)).any()  # the corner of the grid
+
+
+def test_a_window_covers_a_longitude_latitude_box() -> None:
+    window = MOLL_1KM.window_for_bounds(*puc.REGIONS["belgium"])
+    brussels = pyproj.Transformer.from_crs(
+        "EPSG:4326", MOLL_1KM.crs, always_xy=True
+    ).transform(4.35, 50.85)
+    row, col = MOLL_1KM.cell_index(np.array([brussels[0]]), np.array([brussels[1]]))
+    rows, cols = window.toslices()
+    assert rows.start <= row[0] < rows.stop
+    assert cols.start <= col[0] < cols.stop
+    assert MOLL_1KM.window_for_bounds(-180, -90, 180, 90) == MOLL_1KM.full_window
+
+
+def test_grid_properties() -> None:
+    assert MOLL_1KM.cell_area_km2 == 1.0
+    assert MOLL_1KM.full_window == Window(0, 0, 36_082, 18_000)

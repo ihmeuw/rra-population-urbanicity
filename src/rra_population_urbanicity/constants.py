@@ -20,3 +20,11 @@ TimePoint = Annotated[str, StringConstraints(pattern=TIME_POINT_PATTERN)]
 
 # The time point of layers that do not vary in time.
 STATIC = "static"
+
+# Regions for development runs, as (west, south, east, north) in degrees. Each
+# extends about half a degree past the country, so clusters near its border
+# are whole.
+REGIONS = {
+    # Belgium, as in the flexurba vignette.
+    "belgium": (2.0, 49.0, 7.0, 52.0),
+}

@@ -311,22 +311,18 @@ def test_the_optimal_built_up_threshold(average: str, expected: float) -> None:
     built[1:6, 1:6] = 0.4
     population[2:4, 8:10] = 2000  # a smaller dense cluster, which does not count
     built[2:4, 8:10] = 0.9
+    prepared = rules.prepare(scene(population, land, built), BASE, None)
     threshold = rules.optimal_built_threshold(
-        population,
-        rules.per_land(population, land),
-        built,
-        land,
-        params(built_threshold_average=average),
+        population, prepared, params(built_threshold_average=average)
     )
     assert threshold == pytest.approx(expected)
 
 
 def test_the_optimal_threshold_needs_a_large_cluster() -> None:
     population = np.full((2, 2), 2000.0)
+    prepared = rules.prepare(scene(population), BASE, None)
     with pytest.raises(ValueError, match="No cluster is large enough"):
-        rules.optimal_built_threshold(
-            population, population, np.zeros((2, 2)), np.ones((2, 2)), BASE
-        )
+        rules.optimal_built_threshold(population, prepared, BASE)
 
 
 def test_clusters_do_not_join_across_the_edges_of_the_array() -> None:
