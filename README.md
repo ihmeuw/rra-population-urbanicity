@@ -52,6 +52,23 @@ The documentation is automatically generated from the content of the `docs` dire
  of the public signatures of the source code. The documentation is updated and published as a [Github project page
  ](https://pages.github.com/) automatically as part each release.
 
+### Template and dependency updates
+
+Neither runs on a schedule; both are done by hand, when wanted.
+
+* **Template.** The repository was generated with [cruft](https://cruft.github.io/cruft/) from
+  `collijk/python-package-cookiecutter`, at the commit recorded in `.cruft.json`. To pick up template
+  changes, install cruft (`pip install cruft`) and, from a clean working tree, run `cruft check` to see
+  whether the template has moved, then `cruft update` to apply it. Resolve any `.rej` files it leaves;
+  the Test workflow fails while they exist.
+* **Dependencies.** For a report of outdated direct dependencies, trigger the
+  [Outdated dependencies workflow](https://github.com/ihmeuw/rra-population-urbanicity/actions/workflows/dependencies.yml)
+  (press _Run workflow_); the table is on the run's summary page, and
+  `poetry show --outdated --top-level` prints the same list locally. It includes versions that
+  `pyproject.toml` blocks on purpose, such as the commented pre-commit cap. To update, run
+  `poetry update <package>` within the current constraints, or edit a constraint and run `poetry lock`
+  then `poetry install`; then run the tests.
+
 ### Releasing
 
 Trigger the [Draft release workflow](https://github.com/ihmeuw/rra-population-urbanicity/actions/workflows/draft_release.yml)
