@@ -176,11 +176,8 @@ class ClassificationSpecification(_Spec):
 
     @model_validator(mode="after")
     def built_source_if_needed(self) -> Self:
-        parameters = self.method.parameters
-        if self.built is None and (
-            parameters.uc_built_criterion or parameters.duc_built_criterion
-        ):
-            msg = "The built-up criterion is on, but there is no built-up source."
+        if self.built is None and (rules := self.method.parameters.rules_using_built()):
+            msg = f"There is no built-up source, but these rules use it: {', '.join(rules)}."
             raise ValueError(msg)
         return self
 

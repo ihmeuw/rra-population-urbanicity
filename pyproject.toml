@@ -150,5 +150,6 @@ disallow_any_unimported = false
 [[tool.mypy.overrides]]
 module = [
     "rasterio.*",
+    "scipy.*",
 ]
 ignore_missing_imports = true

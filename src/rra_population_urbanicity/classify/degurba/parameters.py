@@ -27,6 +27,15 @@ class DegurbaParameters(BaseModel):
     # A cell is on land if at least this share of it is permanent land, or if
     # it is populated or built (Table 22, classes 10 and 11).
     water_land_min: float = Field(ge=0, le=1)
+    # How land is counted where people or buildings sit on cells that are
+    # mostly water (Figure 28's "density on land" step):
+    #   none: divide by the land share as it is;
+    #   built_up: raise the land share of built-up cells on water to the larger
+    #     of `water_land_min` and their built-up share;
+    #   built_up_and_population: also give populated cells on water with no
+    #     built-up a built-up share of population times the global average
+    #     built-up per person, and raise them the same way.
+    density_on_land: Literal["none", "built_up", "built_up_and_population"]
 
     # Urban centres (class 30).
     uc_density: PositiveFloat
@@ -89,10 +98,26 @@ class DegurbaParameters(BaseModel):
     # built-up share of the whole cell.
     built_threshold_average: Literal["cell_mean_land", "area_ratio", "cell_mean_total"]
 
+    def rules_using_built(self) -> list[str]:
+        """The enabled rules that need a built-up layer.
+
+        The on-land test also uses built-up, but reads a missing layer as zero.
+        """
+        rules = [
+            name
+            for name in ("uc_built_criterion", "duc_built_criterion")
+            if getattr(self, name)
+        ]
+        if self.density_on_land != "none":
+            rules.append(f"density_on_land: {self.density_on_land}")
+        return rules
+
 
 GHSL_R2023A = DegurbaParameters(
     strict_thresholds=False,
     water_land_min=0.5,
+    # The fullest reading of the Figure 28 caption; to be tested on the raster.
+    density_on_land="built_up_and_population",
     uc_density=1500,
     uc_size=50_000,
     uc_contiguity=4,

@@ -73,6 +73,17 @@ def test_the_v1_reproduction_overrides_nine_parameters() -> None:
     }
 
 
+def test_built_is_optional_when_no_enabled_rule_uses_it() -> None:
+    raw = yaml.safe_load(V2_REPRODUCTION.read_text())
+    raw["built"] = None
+    raw["method"]["parameters"] = {
+        "uc_built_criterion": False,
+        "duc_built_criterion": False,
+        "density_on_land": "none",
+    }
+    assert ClassificationSpecification.model_validate(raw).built is None
+
+
 @pytest.mark.parametrize(
     ("keys", "value", "message"),
     [
