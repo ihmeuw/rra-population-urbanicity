@@ -1,16 +1,10 @@
 # RRA Population Urbanicity
 
-[![PyPI](https://img.shields.io/pypi/v/rra-population-urbanicity?style=flat-square)](https://pypi.python.org/pypi/rra-population-urbanicity/)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/rra-population-urbanicity?style=flat-square)](https://pypi.python.org/pypi/rra-population-urbanicity/)
-[![PyPI - License](https://img.shields.io/pypi/l/rra-population-urbanicity?style=flat-square)](https://pypi.python.org/pypi/rra-population-urbanicity/)
-
 ---
 
 **Documentation**: [https://ihmeuw.github.io/rra-population-urbanicity](https://ihmeuw.github.io/rra-population-urbanicity)
 
 **Source Code**: [https://github.com/ihmeuw/rra-population-urbanicity](https://github.com/ihmeuw/rra-population-urbanicity)
-
-**PyPI**: [https://pypi.org/project/rra-population-urbanicity/](https://pypi.org/project/rra-population-urbanicity/)
 
 ---
 
@@ -18,9 +12,13 @@ Classifies settlement type (urban/rural, Degree of Urbanisation) from gridded po
 
 ## Installation
 
+The package is not published to PyPI. Install it from GitHub:
+
 ```sh
-pip install rra-population-urbanicity
+pip install git+https://github.com/ihmeuw/rra-population-urbanicity
 ```
+
+To install a specific release, append its version, e.g. `@0.1.0`.
 
 ## Development
 
@@ -76,8 +74,8 @@ Trigger the [Draft release workflow](https://github.com/ihmeuw/rra-population-ur
 
 Find the draft release from the
 [GitHub releases](https://github.com/ihmeuw/rra-population-urbanicity/releases) and publish it. When
- a release is published, it'll trigger [release](https://github.com/ihmeuw/rra-population-urbanicity/blob/master/.github/workflows/release.yml) workflow which creates PyPI
- release and deploys updated documentation.
+ a release is published, it'll trigger the [release](https://github.com/ihmeuw/rra-population-urbanicity/blob/main/.github/workflows/release.yml) workflow, which
+ deploys the updated documentation. Nothing is published to PyPI.
 
 ### Pre-commit
 
