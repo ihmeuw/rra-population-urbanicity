@@ -217,41 +217,53 @@ def dense_clusters(
     return select(labels, keep)
 
 
-def smooth_edges(
-    centres: BoolArray, eligible: BoolArray, contiguity: Contiguity
-) -> BoolArray:
-    """Grow urban centres by the iterative 3x3 majority rule (fn 29).
+def smooth_edges(centres: BoolArray, eligible: BoolArray) -> BoolArray:
+    """Grow urban centres by an iterative 3x3 majority filter (Table 22, fn 29).
 
-    A cell joins a centre when at least half of its eligible neighbours belong
-    to that centre: ties count as a majority. Only eligible cells (populated,
-    or mostly land) count as neighbours or can join, so water is never added.
-    All cells are tested against the same state, and the test is repeated
-    until no cell joins.
+    The majority is taken over the eligible cells (populated, or mostly land)
+    of a cell's 3x3 window, the cell itself included. A cell joins when at
+    least half of them are urban centre: with nine cells there is no draw, and
+    a draw, possible only when water leaves an even number, counts as urban.
+    Only eligible cells can join, so water is never added. All cells are
+    tested against the same state, and the test is repeated until no cell
+    joins. A cell's answer can change only when a neighbour has just joined,
+    so after the first round only those cells are tested again.
     """
-    labels, _ = label(centres, contiguity)
-    n_rows, n_cols = labels.shape
-    while True:
-        rows, cols = np.nonzero(dilate(labels > 0, 1) & (labels == 0) & eligible)
-        neighbours = np.zeros((rows.size, len(NEIGHBOURS)), dtype=np.int32)
-        n_eligible = np.zeros(rows.size, dtype=np.int32)
-        for k, (dr, dc) in enumerate(NEIGHBOURS):
+    urban = centres.copy()
+    n_rows, n_cols = urban.shape
+    rows, cols = np.nonzero(dilate(urban, 1) & ~urban & eligible)
+    while rows.size:
+        n_urban = np.zeros(rows.size, dtype=np.int32)
+        n_eligible = np.ones(rows.size, dtype=np.int32)  # the cell itself
+        for dr, dc in NEIGHBOURS:
             r, c = rows + dr, cols + dc
             inside = (r >= 0) & (r < n_rows) & (c >= 0) & (c < n_cols)
             r, c = r.clip(0, n_rows - 1), c.clip(0, n_cols - 1)
             counted = inside & eligible[r, c]
             n_eligible += counted
-            neighbours[:, k] = np.where(counted, labels[r, c], 0)
-        # For each candidate, the centre that most of its neighbours belong to.
-        same = (neighbours[:, :, None] == neighbours[:, None, :]) & (
-            neighbours[:, :, None] > 0
-        )
-        counts = same.sum(axis=2)
-        best = counts.argmax(axis=1)
-        n_best = counts[np.arange(rows.size), best]
-        joins = (n_best > 0) & (2 * n_best >= n_eligible)
-        if not joins.any():
-            return labels > 0
-        labels[rows[joins], cols[joins]] = neighbours[np.arange(rows.size), best][joins]
+            n_urban += counted & urban[r, c]
+        joins = 2 * n_urban >= n_eligible
+        urban[rows[joins], cols[joins]] = True
+        rows, cols = candidates_near(urban, eligible, rows[joins], cols[joins])
+    return urban
+
+
+def candidates_near(
+    urban: BoolArray,
+    eligible: BoolArray,
+    rows: npt.NDArray[np.intp],
+    cols: npt.NDArray[np.intp],
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.intp]]:
+    """The eligible cells next to a set of cells that are not yet urban, each once."""
+    n_rows, n_cols = urban.shape
+    offsets = np.array(NEIGHBOURS)
+    r = (rows[:, None] + offsets[:, 0]).ravel()
+    c = (cols[:, None] + offsets[:, 1]).ravel()
+    inside = (r >= 0) & (r < n_rows) & (c >= 0) & (c < n_cols)
+    r, c = r[inside], c[inside]
+    keep = eligible[r, c] & ~urban[r, c]
+    flat = np.unique(r[keep] * n_cols + c[keep])
+    return np.divmod(flat, n_cols)
 
 
 def fill_gaps(mask: BoolArray, max_cells: float, contiguity: Contiguity) -> BoolArray:
@@ -297,10 +309,8 @@ def urban_centres(
     max_cells = params.uc_max_gap_km2 / cell_area_km2
     contiguity = params.uc_contiguity
     if params.uc_morphology_order == "smooth_then_fill":
-        return fill_gaps(
-            smooth_edges(seeds, eligible, contiguity), max_cells, contiguity
-        )
-    return smooth_edges(fill_gaps(seeds, max_cells, contiguity), eligible, contiguity)
+        return fill_gaps(smooth_edges(seeds, eligible), max_cells, contiguity)
+    return smooth_edges(fill_gaps(seeds, max_cells, contiguity), eligible)
 
 
 def semi_dense(

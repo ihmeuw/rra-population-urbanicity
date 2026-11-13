@@ -142,19 +142,34 @@ def test_a_hole_enclosed_only_through_corners() -> None:
 
 
 @pytest.mark.parametrize(("other_land", "joins"), [(0.0, True), (1.0, False)])
-def test_the_majority_rule_counts_ties_as_urban(other_land: float, joins: bool) -> None:
+def test_the_majority_rule_counts_a_draw_as_urban(
+    other_land: float, joins: bool
+) -> None:
     population = np.zeros((10, 12))
     population[:6, :10] = 2000  # an urban centre of 120,000 people
     land = np.ones_like(population)
     land[6] = 0  # a row of water below it, except for two cells
     land[6, 5] = 1
     land[6, 4] = other_land
+    land[7, 6] = 0
     codes = classify(population, land)
-    # (6, 5) has three neighbours in the centre and three eligible ones below;
-    # (6, 4) is water or a seventh eligible neighbour.
+    # The window of (6, 5) has six eligible cells, three of them urban: a draw.
+    # If (6, 4) is land, there are seven, and three is not a majority.
     expected = scheme.URBAN_CENTRE if joins else scheme.VERY_LOW_DENSITY_RURAL
     assert codes[6, 5] == expected
     assert codes[6, 6] == scheme.WATER  # water is never added
+
+
+def test_smoothing_fills_a_concave_corner_without_spreading() -> None:
+    population = np.zeros((12, 12))
+    population[:6, :10] = 2000
+    population[6:10, :4] = 2000  # an L-shaped urban centre of 152,000 people
+    codes = classify(population)
+    # The inner corner has five urban cells in its window of nine and joins.
+    # Its neighbours along each edge then have four of nine, not a majority.
+    assert codes[6, 4] == scheme.URBAN_CENTRE
+    assert codes[6, 5] != scheme.URBAN_CENTRE
+    assert codes[7, 4] != scheme.URBAN_CENTRE
 
 
 @pytest.mark.parametrize(
