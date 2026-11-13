@@ -1,0 +1,19 @@
+# An example Populace run. The land source is provisional: the land layer for
+# Populace runs has not been chosen yet.
+population:
+  source: populace
+  # Quoted: YAML reads an unquoted 2026_10_02.001 as the number 20261002.001.
+  model_version: "2026_10_02.001"
+  resolution: "40"
+grid: moll_1km
+land:
+  source: ghs_land
+  release: r2022a
+built:
+  source: microsoft_density
+  building_version: v8
+  resolution: "40"
+time_points: [2020q1, 2021q1, 2022q1, 2023q1, 2024q1, 2025q1, 2026q1]
+method:
+  name: degurba_r2023a
+  parameter_set: populace_default

@@ -1,0 +1,151 @@
+[project]
+name = "rra-population-urbanicity"
+version = "0.0.1"
+description = "Classifies settlement type (urban/rural, Degree of Urbanisation) from gridded population and tabulates urban/rural population by administrative unit."
+license = "BSD-3-Clause"
+readme = "README.md"
+authors = [
+    {name = "Ryan Barber", email = "rmbarber@uw.edu"},
+]
+requires-python = ">=3.12"
+dependencies = [
+    "affine>=3.0",
+    "click",
+    "numpy>=2.2.1",
+    "pydantic>=2.10.4",
+    "pyproj>=3.7.0",
+    "pyyaml>=6.0.2",
+    "rasterio>=1.4.3",
+    "requests>=2.32.0",
+    "rra-tools>=1.0.28",
+]
+
+[project.urls]
+homepage = "https://ihmeuw.github.io/rra-population-urbanicity"
+repository = "https://github.com/ihmeuw/rra-population-urbanicity"
+documentation = "https://ihmeuw.github.io/rra-population-urbanicity"
+
+[project.scripts]
+purun = "rra_population_urbanicity.cli:purun"
+putask = "rra_population_urbanicity.cli:putask"
+
+[tool.poetry]
+packages = [
+    { include = "rra_population_urbanicity", from = "src" }
+]
+requires-poetry = ">=2.0"
+
+[tool.poetry.dependencies]
+python = ">=3.12, <4.0"
+
+# We keep the dev dependencies here instead of in the project optional dependencies
+# so they're still installed by default with `poetry install`.
+# They won't be installed or shipped with the package.
+[tool.poetry.group.dev.dependencies]
+# Things we want to put a lower bound on
+mypy = "^1.15.0"
+mkdocs-material = "^9.6.0"
+pre-commit = "^4.0.0"
+pytest = "^8.3.0"
+ruff = "^0.9.7"
+# Things we don't care about the version
+mkdocstrings = {extras = ["python"], version = "*"}
+mkdocs-table-reader-plugin = "*"
+mkdocs-gen-files = "*"
+mkdocs-literate-nav = "*"
+mkdocs-section-index = "*"
+pymdown-extensions = "*"
+pytest-github-actions-annotate-failures = "*"
+pytest-cov = "*"
+python-kacl = "*"
+types-pyyaml = "*"
+types-requests = "*"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py312" # The lowest supported version
+
+[tool.ruff.lint]
+# By default, enable all the lint rules.
+# Add to the ignore list below if you don't want some rules.
+# If you need some ignores for certain modules, see tool.ruff.lint.per-file-ignores below.
+# For individual ignore cases, prefer inline `# noqa`s within the code.
+select = ["ALL"]
+ignore = [
+    "COM812",   # flake8 missing trailing comma, formatter handles
+    "ISC001",   # Implicit string concatenation
+    "ANN",      # Type hints related, let mypy handle these.
+    "D",        # Docstrings related, way too strict to our taste
+    "RUF007",   # zip is idiomatic, this is a dumb check
+    "RET505",   # Else after return, makes a lot of false positives
+    "E501",     # Line too long, this is autoformatted
+    # The rest match rra-population-model.
+    "T201",     # Use of `print` detected, we don't have formal logging yet.
+    "PD901",    # Don't use generic 'df', practicality beats purity.
+    "PD008",    # .at is okay
+    "PD010",    # I like .unstack()
+    "RET504",   # Assign to variable before return, useful for debugging
+    "FBT001",   # Boolean type positional arg, annoying with cli flags
+    "S603",     # Supbrocess arg validation, prone to false positives
+    "FIX002",   # TODOs are okay.
+    "TD002",    # TODOs don't need an author
+    "TD003",    # TODOs don't need a linked issue
+    "PYI041",   # float | int is better explicit typing than depending on a special case
+    "PLR0913",  # We have a long of function args a lot, and making better datastru
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",     # "Use of `assert` detected"
+    "ARG",      # "Unused function argument". Fixtures are often unused.
+    "S105",     # "Possible hardcoded password".
+    "PLR2004",  # "Magic value used in comparison". Tests compare against known values.
+]
+"scripts/**" = [
+    "INP001",   # "Scripts are not part of a package."
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = [
+    "classmethod",
+    "pydantic.validator",
+    "pydantic.root_validator",
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pytest.ini_options]
+addopts = """\
+    --cov rra_population_urbanicity \
+    --cov tests \
+    --cov-report term-missing \
+    --no-cov-on-fail \
+"""
+
+[tool.coverage.report]
+fail_under = 100
+exclude_lines = [
+    'if TYPE_CHECKING:',
+    'pragma: no cover'
+]
+
+[tool.mypy]
+# This is the global mypy configuration.
+# Avoid changing this!
+strict = true  # See all the enabled flags `mypy --help | grep -A 10 'Strict mode'`
+disallow_any_unimported = false
+
+# If you need to ignore something for some specific module,
+# add overrides for them. Avoid changing the global config!
+[[tool.mypy.overrides]]
+module = [
+    "rasterio.*",
+]
+ignore_missing_imports = true

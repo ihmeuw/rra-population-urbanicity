@@ -1,0 +1,19 @@
+{
+  "template": "https://github.com/collijk/python-package-cookiecutter",
+  "commit": "d86abba2604d3fb06b718d45a83170b6315debde",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "author_name": "Ryan Barber",
+      "author_email": "rmbarber@uw.edu",
+      "github_username": "ihmeuw",
+      "project_name": "RRA Population Urbanicity",
+      "project_slug": "rra-population-urbanicity",
+      "package_name": "rra_population_urbanicity",
+      "project_short_description": "Classifies settlement type (urban/rural, Degree of Urbanisation) from gridded population and tabulates urban/rural population by administrative unit.",
+      "_template": "https://github.com/collijk/python-package-cookiecutter",
+      "_commit": "d86abba2604d3fb06b718d45a83170b6315debde"
+    }
+  },
+  "directory": null
+}

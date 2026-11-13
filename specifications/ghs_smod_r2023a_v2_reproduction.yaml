@@ -1,0 +1,16 @@
+# Reproduce GHS-SMOD R2023A V2.0 from its own inputs, with the rules of the
+# GHSL Data Package 2023, 2024 edition.
+population:
+  source: ghs_pop
+  release: r2023a
+grid: moll_1km
+land:
+  source: ghs_land
+  release: r2022a
+built:
+  source: ghs_built_s
+  release: r2023a
+time_points: [2020q1, 2025q1]
+method:
+  name: degurba_r2023a
+  parameter_set: ghsl_r2023a
