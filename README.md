@@ -77,6 +77,11 @@ Find the draft release from the
  a release is published, it'll trigger the [release](https://github.com/ihmeuw/rra-population-urbanicity/blob/main/.github/workflows/release.yml) workflow, which
  deploys the updated documentation. Nothing is published to PyPI.
 
+Both workflows use GitHub's built-in `GITHUB_TOKEN`, so the repository needs no token secrets. Two
+consequences: the draft release pushes its version-bump commit straight to `main`, so it fails if `main`
+is protected to require pull requests; and pushes made with that token don't start other workflows, so
+the "Release x.y.z" commit gets no Test run (it changes only the version and the changelog).
+
 ### Pre-commit
 
 Pre-commit hooks run all the auto-formatting (`ruff format`), linters (e.g. `ruff` and `mypy`), and other quality

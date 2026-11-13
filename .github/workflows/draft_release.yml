@@ -11,10 +11,12 @@ on:
 jobs:
   draft-release:
     runs-on: ubuntu-latest
+    # The built-in GITHUB_TOKEN pushes the version bump and tag to main and
+    # creates the release; this fails if main requires pull requests.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_TOKEN }}
       - uses: ./.github/actions/python-poetry-env
       - name: Update version
         id: updated_version
@@ -49,7 +51,7 @@ jobs:
       - name: Create a draft release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.updated_version.outputs.version }}
           release_name: Release ${{ steps.updated_version.outputs.version }}

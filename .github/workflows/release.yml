@@ -7,10 +7,11 @@ on:
 jobs:
   deploy-docs:
     runs-on: ubuntu-latest
+    # The built-in GITHUB_TOKEN pushes the built site to the gh-pages branch.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_TOKEN }}
       - uses: ./.github/actions/python-poetry-env
       - name: Deploy docs
         run: poetry run mkdocs gh-deploy --force
