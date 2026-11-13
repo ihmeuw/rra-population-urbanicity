@@ -12,6 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/python-poetry-env
       - name: List outdated direct dependencies
+        # An explicit bash shell runs with pipefail, so the step fails if
+        # `poetry show` does, rather than reporting an empty table.
+        shell: bash
         run: |
           {
             echo "### Outdated direct dependencies"
