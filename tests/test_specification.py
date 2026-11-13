@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,12 @@ def changed_parameters(
     resolved = spec.method.parameters.model_dump()
     defaults = PARAMETER_SETS[parameter_set].model_dump()
     return {name for name, value in resolved.items() if value != defaults[name]}
+
+
+def test_the_specification_can_be_imported_first() -> None:
+    # A fresh interpreter, so no other module of the package is loaded before it.
+    code = "import rra_population_urbanicity.specification"
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 @pytest.mark.parametrize(
