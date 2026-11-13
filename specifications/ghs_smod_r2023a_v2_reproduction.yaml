@@ -14,3 +14,9 @@ time_points: [2020q1, 2025q1]
 method:
   name: degurba_r2023a
   parameter_set: ghsl_r2023a
+  parameters:
+    # GHSL's own threshold, measured from the GHS-SMOD V2.0 2020 raster: the
+    # class-23 cells under 1,500/km² and their non-urban rook neighbours put it
+    # in (0.216930, 0.216940]. None of the averages footnote 30 allows
+    # reproduces it from GHS-BUILT-S, so it is given here instead of computed.
+    built_threshold: 0.21694

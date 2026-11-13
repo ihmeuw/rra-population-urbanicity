@@ -47,7 +47,8 @@ def test_a_parameter_set_resolves_to_the_same_parameters_every_time() -> None:
     first = ClassificationSpecification.from_yaml(V2_REPRODUCTION)
     second = ClassificationSpecification.from_yaml(V2_REPRODUCTION)
     assert first.method.parameters == second.method.parameters
-    assert first.method.parameters == PARAMETER_SETS["ghsl_r2023a"]
+    # The V2.0 reproduction overrides only the built-up threshold, with GHSL's own.
+    assert changed_parameters(first, "ghsl_r2023a") == {"built_threshold"}
 
 
 def test_populace_default_only_turns_off_the_built_up_criterion() -> None:
