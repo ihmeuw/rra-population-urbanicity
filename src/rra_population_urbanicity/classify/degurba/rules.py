@@ -465,9 +465,9 @@ def classify(
         strict=strict,
     )
     urban = centres | dense_urban
-    # Level-1 urban clusters contain every class 30 and 23 cell.
+    # Level-1 urban clusters contain every class 30 cell.
     labels, n = label(
-        passes(density, params.ucl_density, strict=strict) | urban,
+        passes(density, params.ucl_density, strict=strict) | centres,
         params.ucl_contiguity,
     )
     in_urban_cluster = select(

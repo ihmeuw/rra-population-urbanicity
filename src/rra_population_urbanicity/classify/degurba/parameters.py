@@ -56,7 +56,8 @@ class DegurbaParameters(BaseModel):
     duc_built_criterion: bool
     duc_require_dense_cell: bool
 
-    # Urban clusters (level 1). They also contain every class 30 and 23 cell.
+    # Urban clusters (level 1). They also contain every class 30 cell, but not
+    # the class 23 cells below `ucl_density`.
     ucl_density: PositiveFloat
     ucl_size: PositiveFloat
     ucl_contiguity: Contiguity

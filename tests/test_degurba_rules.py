@@ -199,6 +199,23 @@ def test_a_centre_that_grows_to_its_window_edge_is_redone_in_a_wider_one(
     assert centres.sum() == seeds.sum() + 1
 
 
+def test_a_dense_urban_cluster_cell_below_300_does_not_join_an_urban_cluster() -> None:
+    population = np.zeros((8, 10))
+    built = np.zeros_like(population)
+    population[1:3, 1:4] = 1000  # a dense urban cluster of 7,000 people
+    population[1, 1] = 2000
+    built[1:3, 1:4] = 0.6
+    population[2, 4] = 100  # built-up only, 100/km²: in the cluster but not at 300
+    built[2, 4] = 0.6
+    hamlet = np.s_[2:4, 5:7]  # 1,600 people at 400/km², touching only (2, 4)
+    population[hamlet] = 400
+    codes = classify(
+        population, built=built, built_threshold=0.5, duc_built_criterion=True
+    )
+    assert codes[2, 4] == scheme.DENSE_URBAN_CLUSTER
+    assert (codes[hamlet] == scheme.RURAL_CLUSTER).all()
+
+
 @pytest.mark.parametrize(
     ("order", "filled"), [("smooth_then_fill", True), ("fill_then_smooth", False)]
 )
