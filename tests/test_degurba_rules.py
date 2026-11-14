@@ -172,6 +172,33 @@ def test_smoothing_fills_a_concave_corner_without_spreading() -> None:
     assert codes[7, 4] != scheme.URBAN_CENTRE
 
 
+def test_each_urban_centre_is_smoothed_on_its_own() -> None:
+    seeds = np.zeros((7, 9), dtype=bool)
+    seeds[2:5, 2:4] = True  # two centres, one column apart
+    seeds[2:5, 5:7] = True
+    eligible = np.ones_like(seeds)
+    # Counted together, (3, 4) has six urban cells in its window of nine and
+    # would join them; each centre alone has three.
+    centres = rules.generalise_centres(seeds, eligible, BASE, 1.0)
+    np.testing.assert_array_equal(centres, seeds)
+
+
+def test_a_centre_that_grows_to_its_window_edge_is_redone_in_a_wider_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rules, "CENTRE_PAD", 1)
+    seeds = np.zeros((10, 12), dtype=bool)
+    seeds[:6, :10] = True
+    eligible = np.ones_like(seeds)
+    eligible[6] = False  # a row of water below the centre, except for one cell
+    eligible[6, 5] = True
+    eligible[7, 6] = False
+    # (6, 5) joins by a draw, on the last row of the first window.
+    centres = rules.generalise_centres(seeds, eligible, BASE, 1.0)
+    assert centres[6, 5]
+    assert centres.sum() == seeds.sum() + 1
+
+
 @pytest.mark.parametrize(
     ("order", "filled"), [("smooth_then_fill", True), ("fill_then_smooth", False)]
 )

@@ -35,6 +35,9 @@ STRUCTURES = {
 COMPLEMENT: dict[Contiguity, Contiguity] = {4: 8, 8: 4}
 # The eight neighbours of a cell, as (row, column) offsets.
 NEIGHBOURS = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if (dr, dc) != (0, 0)]
+# Each urban centre is generalised in a window this many cells beyond its
+# bounding box, widened if the centre grows to the window's edge.
+CENTRE_PAD = 8
 
 
 @dataclass(frozen=True)
@@ -291,7 +294,7 @@ def urban_centres(
     built_threshold: float | None,
     cell_area_km2: float,
 ) -> BoolArray:
-    """Class 30: dense clusters of at least `uc_size` people, smoothed and gap-filled.
+    """Class 30: dense clusters of at least `uc_size` people, each smoothed and gap-filled.
 
     The clusters are found before the morphological steps (fn 33).
     """
@@ -306,11 +309,70 @@ def urban_centres(
         require_dense_cell=params.uc_require_dense_cell,
         strict=params.strict_thresholds,
     )
-    max_cells = params.uc_max_gap_km2 / cell_area_km2
+    return generalise_centres(seeds, eligible, params, cell_area_km2)
+
+
+def generalise(
+    centre: BoolArray, eligible: BoolArray, params: DegurbaParameters, max_cells: float
+) -> BoolArray:
+    """Smooth one urban centre's edges and fill its gaps, in the order the parameters give."""
     contiguity = params.uc_contiguity
     if params.uc_morphology_order == "smooth_then_fill":
-        return fill_gaps(smooth_edges(seeds, eligible), max_cells, contiguity)
-    return smooth_edges(fill_gaps(seeds, max_cells, contiguity), eligible)
+        return fill_gaps(smooth_edges(centre, eligible), max_cells, contiguity)
+    return smooth_edges(fill_gaps(centre, max_cells, contiguity), eligible)
+
+
+def padded(
+    box: tuple[slice, slice], pad: int, shape: tuple[int, ...]
+) -> tuple[slice, slice]:
+    rows, cols = box
+    return (
+        slice(max(rows.start - pad, 0), min(rows.stop + pad, shape[0])),
+        slice(max(cols.start - pad, 0), min(cols.stop + pad, shape[1])),
+    )
+
+
+def reaches_window_edge(
+    mask: BoolArray, window: tuple[slice, slice], shape: tuple[int, ...]
+) -> bool:
+    """Whether `mask` reaches a side of `window` that is not an edge of the array."""
+    rows, cols = window
+    return bool(
+        (rows.start > 0 and mask[0].any())
+        or (rows.stop < shape[0] and mask[-1].any())
+        or (cols.start > 0 and mask[:, 0].any())
+        or (cols.stop < shape[1] and mask[:, -1].any())
+    )
+
+
+def generalise_centres(
+    seeds: BoolArray,
+    eligible: BoolArray,
+    params: DegurbaParameters,
+    cell_area_km2: float,
+) -> BoolArray:
+    """Generalise each urban centre on its own, then combine them.
+
+    A cell between two centres counts only one centre's cells towards the
+    majority, so smoothing does not join centres that lie close together.
+    GHS-SMOD V2.0 behaves this way: counted over all of its class 30 cells, the
+    majority rule would add cells between neighbouring centres that it leaves out.
+    """
+    max_cells = params.uc_max_gap_km2 / cell_area_km2
+    labels, _ = label(seeds, params.uc_contiguity)
+    centres = np.zeros_like(seeds)
+    for index, box in enumerate(ndimage.find_objects(labels), start=1):
+        pad = CENTRE_PAD
+        while True:
+            window = padded(box, pad, labels.shape)
+            grown = generalise(
+                labels[window] == index, eligible[window], params, max_cells
+            )
+            if not reaches_window_edge(grown, window, labels.shape):
+                break
+            pad *= 2
+        centres[window] |= grown
+    return centres
 
 
 def semi_dense(
