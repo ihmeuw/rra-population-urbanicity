@@ -135,6 +135,14 @@ def land_for_density(
 
 
 @dataclass(frozen=True)
+class Classification:
+    """The class of every cell, and which urban centre each class 30 cell belongs to."""
+
+    codes: CodeArray
+    urban_centres: LabelArray  # each urban centre's id, 0 elsewhere
+
+
+@dataclass(frozen=True)
 class Prepared:
     """The inputs as the rules use them."""
 
@@ -293,8 +301,10 @@ def urban_centres(
     params: DegurbaParameters,
     built_threshold: float | None,
     cell_area_km2: float,
-) -> BoolArray:
+) -> LabelArray:
     """Class 30: dense clusters of at least `uc_size` people, each smoothed and gap-filled.
+
+    Returns each centre's id, 0 elsewhere (see `generalise_centres`).
 
     The clusters are found before the morphological steps (fn 33).
     """
@@ -350,29 +360,33 @@ def generalise_centres(
     eligible: BoolArray,
     params: DegurbaParameters,
     cell_area_km2: float,
-) -> BoolArray:
-    """Generalise each urban centre on its own, then combine them.
+) -> LabelArray:
+    """Generalise each urban centre on its own, and return each centre's id (0 elsewhere).
 
     A cell between two centres counts only one centre's cells towards the
     majority, so smoothing does not join centres that lie close together.
     GHS-SMOD V2.0 behaves this way: counted over all of its class 30 cells, the
     majority rule would add cells between neighbouring centres that it leaves out.
+
+    Centres that meet after generalising stay separate, as GHS-SMOD's urban
+    centre entities do. A centre keeps its own seed cells, and a cell that two
+    centres add goes to the first.
     """
     max_cells = params.uc_max_gap_km2 / cell_area_km2
-    labels, _ = label(seeds, params.uc_contiguity)
-    centres = np.zeros_like(seeds)
-    for index, box in enumerate(ndimage.find_objects(labels), start=1):
+    ids, _ = label(seeds, params.uc_contiguity)
+    for index, box in enumerate(ndimage.find_objects(ids), start=1):
         pad = CENTRE_PAD
         while True:
-            window = padded(box, pad, labels.shape)
+            window = padded(box, pad, ids.shape)
             grown = generalise(
-                labels[window] == index, eligible[window], params, max_cells
+                ids[window] == index, eligible[window], params, max_cells
             )
-            if not reaches_window_edge(grown, window, labels.shape):
+            if not reaches_window_edge(grown, window, ids.shape):
                 break
             pad *= 2
-        centres[window] |= grown
-    return centres
+        target = ids[window]
+        target[grown & (target == 0)] = index
+    return ids
 
 
 def semi_dense(
@@ -419,8 +433,8 @@ def classify(
     *,
     built_threshold: float | None = None,
     built_per_person: float | None = None,
-) -> CodeArray:
-    """Classify every cell into the `degurba_l2` codes.
+) -> Classification:
+    """Classify every cell into the `degurba_l2` codes, and identify each urban centre.
 
     `built_threshold` is the resolved built-up threshold, needed when either
     built-up criterion is on. `built_per_person` is the global average
@@ -444,7 +458,7 @@ def classify(
     eligible = (population > 0) | (inputs.land >= params.water_land_min)
     on_land = eligible | (built > 0)
 
-    centres = urban_centres(
+    centre_ids = urban_centres(
         population,
         density,
         built_on_land,
@@ -453,6 +467,7 @@ def classify(
         built_threshold,
         inputs.cell_area_km2,
     )
+    centres = centre_ids > 0
     dense_urban = ~centres & dense_clusters(
         population,
         density,
@@ -494,4 +509,4 @@ def classify(
     codes[dense_urban] = scheme.DENSE_URBAN_CLUSTER
     codes[centres] = scheme.URBAN_CENTRE
     codes[~inputs.domain] = scheme.NODATA
-    return codes
+    return Classification(codes, centre_ids)

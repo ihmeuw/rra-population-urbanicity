@@ -16,8 +16,9 @@ def test_the_cluster_table() -> None:
     population[8:14, 8:14] = 2000
     population[17:19, 2:5] = 400  # a rural cluster of 2,400 people
     inputs = scene(population)
-    codes = rules.classify(inputs, BASE)
-    table = clusters.cluster_table(codes, inputs, BASE, TRANSFORM, CRS)
+    table = clusters.cluster_table(
+        rules.classify(inputs, BASE), inputs, BASE, TRANSFORM, CRS
+    )
 
     assert table.groupby("cluster_type").size().to_dict() == {
         "urban_centre": 2,  # rook contiguity keeps them apart
@@ -56,7 +57,29 @@ def test_the_cluster_table() -> None:
 
 def test_a_scene_without_clusters_gives_an_empty_table() -> None:
     inputs = scene(np.zeros((3, 3)))
-    codes = rules.classify(inputs, BASE)
-    table = clusters.cluster_table(codes, inputs, BASE, TRANSFORM, CRS)
+    table = clusters.cluster_table(
+        rules.classify(inputs, BASE), inputs, BASE, TRANSFORM, CRS
+    )
     assert table.empty
     assert "centroid_lon" in table.columns
+
+
+@pytest.mark.parametrize(
+    ("population", "centre"),
+    [
+        ([300.0, 100.0], (1750.0, -1500.0)),  # weighted by population
+        ([0.0, 0.0], (2000.0, -1500.0)),  # no population: the cells' mean
+    ],
+)
+def test_the_centroid(population: list[float], centre: tuple[float, float]) -> None:
+    labels = np.zeros((3, 4), dtype=np.int32)
+    labels[1, 1:3] = 1
+    people = np.zeros((3, 4))
+    people[1, 1:3] = population
+    codes = np.zeros((3, 4), dtype=np.uint8)
+    row = clusters.summarise(
+        "test", labels, 1, codes, scene(people), TRANSFORM, CRS
+    ).iloc[0]
+    lon, lat = warp.transform(CRS, "EPSG:4326", [centre[0]], [centre[1]])
+    assert row["centroid_lon"] == pytest.approx(lon[0])
+    assert row["centroid_lat"] == pytest.approx(lat[0])

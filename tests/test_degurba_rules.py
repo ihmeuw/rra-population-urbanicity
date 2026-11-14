@@ -55,7 +55,7 @@ def classify(
         scene(population, land, built),
         params(**overrides),
         built_threshold=built_threshold,
-    )
+    ).codes
 
 
 def test_lower_bounds_are_inclusive_or_strict() -> None:
@@ -179,8 +179,10 @@ def test_each_urban_centre_is_smoothed_on_its_own() -> None:
     eligible = np.ones_like(seeds)
     # Counted together, (3, 4) has six urban cells in its window of nine and
     # would join them; each centre alone has three.
-    centres = rules.generalise_centres(seeds, eligible, BASE, 1.0)
-    np.testing.assert_array_equal(centres, seeds)
+    ids = rules.generalise_centres(seeds, eligible, BASE, 1.0)
+    np.testing.assert_array_equal(ids > 0, seeds)
+    assert set(np.unique(ids[2:5, 2:4])) == {1}
+    assert set(np.unique(ids[2:5, 5:7])) == {2}
 
 
 def test_a_centre_that_grows_to_its_window_edge_is_redone_in_a_wider_one(
@@ -194,9 +196,9 @@ def test_a_centre_that_grows_to_its_window_edge_is_redone_in_a_wider_one(
     eligible[6, 5] = True
     eligible[7, 6] = False
     # (6, 5) joins by a draw, on the last row of the first window.
-    centres = rules.generalise_centres(seeds, eligible, BASE, 1.0)
-    assert centres[6, 5]
-    assert centres.sum() == seeds.sum() + 1
+    ids = rules.generalise_centres(seeds, eligible, BASE, 1.0)
+    assert ids[6, 5] == 1
+    assert (ids > 0).sum() == seeds.sum() + 1
 
 
 def test_a_dense_urban_cluster_cell_below_300_does_not_join_an_urban_cluster() -> None:
@@ -396,7 +398,7 @@ def test_clusters_do_not_join_across_the_edges_of_the_array() -> None:
 
 def test_cells_outside_the_domain_get_nodata() -> None:
     domain = np.array([[True, False], [True, True]])
-    codes = rules.classify(scene(np.zeros((2, 2)), domain=domain), BASE)
+    codes = rules.classify(scene(np.zeros((2, 2)), domain=domain), BASE).codes
     assert codes.tolist() == [[11, scheme.NODATA], [11, 11]]  # empty land
 
 
@@ -417,7 +419,7 @@ def test_the_ghsl_r2023a_parameters_run_end_to_end() -> None:
     land[village] = 0.0
     codes = rules.classify(
         scene(population, land), GHSL_R2023A, built_threshold=0.3, built_per_person=1e-4
-    )
+    ).codes
     assert (codes[6:12, 6:12] == scheme.URBAN_CENTRE).all()
     # On land raised to half of each cell the village is 1,200/km²; on no land
     # its density would be infinite, and it would be a dense urban cluster.

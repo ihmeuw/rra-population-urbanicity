@@ -186,22 +186,24 @@ def run(
             threshold = built_threshold(inputs, spec)
         cropped = crop(inputs, window)
         del inputs
-        codes = rules.classify(
+        classification = rules.classify(
             cropped,
             params,
             built_threshold=threshold,
             built_per_person=per_person,
         )
+        codes = classification.codes
         write_classes(
             data.class_raster_path(version, time_point), codes, grid, window, DEGURBA_L2
         )
         table_path = data.cluster_table_path(version, time_point)
         mkdir(table_path.parent, parents=True, exist_ok=True)
         transform = windows.transform(window, grid.transform)
-        clusters.cluster_table(codes, cropped, params, transform, grid.crs).to_parquet(
-            table_path, index=False
+        table = clusters.cluster_table(
+            classification, cropped, params, transform, grid.crs
         )
-        del cropped
+        table.to_parquet(table_path, index=False)
+        del cropped, classification
         values, counts = np.unique(codes, return_counts=True)
         resolved[time_point] = {
             "built_threshold": threshold,
