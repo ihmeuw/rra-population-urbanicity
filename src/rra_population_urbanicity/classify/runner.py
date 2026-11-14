@@ -7,7 +7,9 @@ A run writes, under classifications/<version>/:
 - manifest.yaml: what the run resolved from the data (the built-up threshold
   and the built-up per person, for each time point), the region if the run
   was limited to one, and the number of cells in each class;
-- classes/<time_point>.tif: the class raster for each time point.
+- classes/<time_point>.tif: the class raster for each time point;
+- clusters/<time_point>.parquet: the clusters of each time point (see
+  `clusters.cluster_table`).
 """
 
 import datetime
@@ -26,7 +28,7 @@ from rra_tools.shell_tools import mkdir
 
 from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.classify.base import ClassScheme
-from rra_population_urbanicity.classify.degurba import rules
+from rra_population_urbanicity.classify.degurba import clusters, rules
 from rra_population_urbanicity.classify.degurba.scheme import DEGURBA_L2
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import BoolArray, GridDefinition
@@ -182,16 +184,24 @@ def run(
             params.uc_built_criterion or params.duc_built_criterion
         ):
             threshold = built_threshold(inputs, spec)
+        cropped = crop(inputs, window)
+        del inputs
         codes = rules.classify(
-            crop(inputs, window),
+            cropped,
             params,
             built_threshold=threshold,
             built_per_person=per_person,
         )
-        del inputs
         write_classes(
             data.class_raster_path(version, time_point), codes, grid, window, DEGURBA_L2
         )
+        table_path = data.cluster_table_path(version, time_point)
+        mkdir(table_path.parent, parents=True, exist_ok=True)
+        transform = windows.transform(window, grid.transform)
+        clusters.cluster_table(codes, cropped, params, transform, grid.crs).to_parquet(
+            table_path, index=False
+        )
+        del cropped
         values, counts = np.unique(codes, return_counts=True)
         resolved[time_point] = {
             "built_threshold": threshold,

@@ -9,8 +9,8 @@ grids/<grid>/<layer>/<source>/<version components...>/<time point>.tif
     the time point "static".
 classifications/<version>/
     One run of a classification specification: the saved specification,
-    the class scheme, a manifest of what the run resolved, and a class raster
-    per time point under classes/.
+    the class scheme, a manifest of what the run resolved, and per time point
+    a class raster under classes/ and a cluster table under clusters/.
 """
 
 from pathlib import Path
@@ -49,6 +49,9 @@ class UrbanicityData:
 
     def class_raster_path(self, version: str, time_point: str) -> Path:
         return self.classification_root(version) / "classes" / f"{time_point}.tif"
+
+    def cluster_table_path(self, version: str, time_point: str) -> Path:
+        return self.classification_root(version) / "clusters" / f"{time_point}.parquet"
 
     def grid_path(
         self, grid: str, layer: Layer, source: GridSource, time_point: str

@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pytest
 import rasterio
 import yaml
@@ -48,6 +49,16 @@ def test_a_run_writes_a_new_version(ghsl_world: Path) -> None:
         assert src.colormap(1)[scheme.URBAN_CENTRE] == (255, 0, 0, 255)
     assert (codes[2:7, 2:7] == scheme.URBAN_CENTRE).all()
     assert (codes[:, 9] == scheme.WATER).all()
+
+    clusters = pd.read_parquet(root / "clusters" / "2020q1.parquet")
+    town = clusters.set_index("cluster_type").loc["urban_centre"]
+    assert town[["population", "cells"]].tolist() == [50_000, 25]
+    assert town[["row_start", "row_stop", "col_start", "col_stop"]].tolist() == [
+        2,
+        7,
+        2,
+        7,
+    ]
 
     resolved = manifest(root)["time_points"]
     # The threshold comes from 2020 and serves 2025 too: the town's built-up share.
