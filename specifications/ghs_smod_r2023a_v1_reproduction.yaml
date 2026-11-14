@@ -1,6 +1,6 @@
 # Reproduce GHS-SMOD R2023A V1.0 from its own inputs. V1.0 is documented by the
 # original edition of the GHSL Data Package 2023 (PDF dated 2023-10-27) and
-# differs from V2.0 (parameter set ghsl_r2023a) in the nine parameters below.
+# differs from V2.0 (parameter set ghsl_r2023a) in the eight parameters below.
 population:
   source: ghs_pop
   release: r2023a
@@ -20,9 +20,9 @@ method:
     sduc_density: 300
     sduc_size: 5000
     sduc_contiguity: 8
-    # The original does not state the buffer's shape; square, as in V2.0.
-    sduc_buffer_cells: 3
-    # The original Figure 28 tests proximity on whole clusters.
+    # The original Figure 28 tests "Proximity < 3 cells" on whole clusters. In
+    # the V1.0 raster, no cluster with class 22 has a cell within 2 cells of a
+    # class 30 or 23 cell: the buffer is V2.0's 5x5 square.
     sduc_buffer_test: drop_cluster
     # The original edition has no dense-cell requirement.
     uc_require_dense_cell: false

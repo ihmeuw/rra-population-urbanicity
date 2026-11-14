@@ -67,13 +67,12 @@ def test_populace_default_only_turns_off_the_built_up_criterion() -> None:
     assert not populace["uc_built_criterion"]
 
 
-def test_the_v1_reproduction_overrides_nine_parameters() -> None:
+def test_the_v1_reproduction_overrides_eight_parameters() -> None:
     spec = ClassificationSpecification.from_yaml(V1_REPRODUCTION)
     assert changed_parameters(spec, "ghsl_r2023a") == {
         "sduc_density",
         "sduc_size",
         "sduc_contiguity",
-        "sduc_buffer_cells",
         "sduc_buffer_test",
         "uc_require_dense_cell",
         "duc_require_dense_cell",
