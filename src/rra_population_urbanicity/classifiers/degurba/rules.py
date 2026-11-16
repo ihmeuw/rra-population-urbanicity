@@ -71,6 +71,14 @@ def cluster_sums(
     return np.bincount(labels.ravel(), weights=values.ravel(), minlength=n + 1)
 
 
+def renumber(labels: LabelArray, keep: BoolArray) -> LabelArray:
+    """The clusters marked in `keep`, numbered from 1 in label order; 0 elsewhere."""
+    keep[0] = False
+    ids = np.where(keep, np.cumsum(keep), 0).astype(np.int32)
+    result: LabelArray = ids[labels]
+    return result
+
+
 def select(labels: LabelArray, keep: BoolArray) -> BoolArray:
     """The cells of the clusters marked in `keep`, which is indexed by label."""
     keep[0] = False
@@ -136,10 +144,11 @@ def land_for_density(
 
 @dataclass(frozen=True)
 class Classification:
-    """The class of every cell, and which urban centre each class 30 cell belongs to."""
+    """The class of every cell, and the urban centre and urban cluster it belongs to."""
 
     codes: CodeArray
     urban_centres: LabelArray  # each urban centre's id, 0 elsewhere
+    urban_clusters: LabelArray  # each level-1 urban cluster's id, 0 elsewhere
 
 
 @dataclass(frozen=True)
@@ -486,10 +495,11 @@ def classify(
         passes(density, params.ucl_density, strict=strict) | centres,
         params.ucl_contiguity,
     )
-    in_urban_cluster = select(
+    urban_cluster_ids = renumber(
         labels,
         passes(cluster_sums(labels, n, population), params.ucl_size, strict=strict),
     )
+    in_urban_cluster = urban_cluster_ids > 0
     semi = semi_dense(population, density, urban, in_urban_cluster, params)
     labels, n = label(
         passes(density, params.rc_density, strict=strict)
@@ -510,4 +520,4 @@ def classify(
     codes[dense_urban] = scheme.DENSE_URBAN_CLUSTER
     codes[centres] = scheme.URBAN_CENTRE
     codes[~inputs.domain] = scheme.NODATA
-    return Classification(codes, centre_ids)
+    return Classification(codes, centre_ids, urban_cluster_ids)

@@ -3,7 +3,7 @@ import pytest
 from affine import Affine
 from rasterio import warp
 
-from rra_population_urbanicity.classifiers.degurba import clusters, rules
+from rra_population_urbanicity.classifiers.degurba import clusters, rules, scheme
 from tests.test_degurba_rules import BASE, scene
 
 TRANSFORM = Affine(1000.0, 0.0, 0.0, 0.0, -1000.0, 0.0)
@@ -83,3 +83,22 @@ def test_the_centroid(population: list[float], centre: tuple[float, float]) -> N
     lon, lat = warp.transform(CRS, "EPSG:4326", [centre[0]], [centre[1]])
     assert row["centroid_lon"] == pytest.approx(lon[0])
     assert row["centroid_lat"] == pytest.approx(lat[0])
+
+
+def test_urban_clusters_are_the_rules_own() -> None:
+    population = np.zeros((6, 10))
+    built = np.zeros_like(population)
+    population[1:3, 1:4] = 1000  # a dense urban cluster of 7,000 people
+    population[1, 1] = 2000
+    built[1:3, 1:4] = 0.6
+    population[2, 4] = 100  # built-up only, 100/km²: in it, but below 300
+    built[2, 4] = 0.6
+    population[2:4, 5:8] = 900  # 5,400 people, touching only (2, 4)
+    inputs = scene(population, built=built)
+    params = BASE.model_copy(update={"duc_built_criterion": True})
+    classification = rules.classify(inputs, params, built_threshold=0.5)
+    assert classification.codes[2, 4] == scheme.DENSE_URBAN_CLUSTER
+    # The class raster joins them through (2, 4); the rule's urban clusters don't.
+    table = clusters.cluster_table(classification, inputs, params, TRANSFORM, CRS)
+    urban = table[table.cluster_type == "urban_cluster"]
+    assert sorted(urban["population"]) == [5400, 7000]

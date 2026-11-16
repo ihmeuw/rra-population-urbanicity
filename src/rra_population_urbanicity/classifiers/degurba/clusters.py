@@ -1,10 +1,14 @@
 """DEGURBA's clusters as a table, one row per cluster.
 
-Urban centres are the method's own entities: each one is generalised on its
-own, so two can meet in the class raster and still be two centres, as in
-GHS-SMOD's urban-centre entities. The other types are read off the final class
-raster: each type's cells, labelled with the contiguity of the rule that forms
-them. Cluster ids run from 1 within each type and time point.
+Urban centres and level-1 urban clusters are the method's own entities, as
+`classify` identifies them. Each urban centre is generalised on its own, so two
+can meet in the class raster and still be two centres, as in GHS-SMOD's
+urban-centre entities. An urban cluster leaves out class 23 cells below
+`ucl_density`, so it can't always be labelled again from the class raster:
+such a cell is not counted, and two urban clusters that meet only through one
+stay two. The other types are read off the final class raster: each type's
+cells, labelled with the contiguity of the rule that forms them. Cluster ids
+run from 1 within each type and time point.
 """
 
 import numpy as np
@@ -20,13 +24,6 @@ from rra_population_urbanicity.classifiers.degurba.parameters import (
     DegurbaParameters,
 )
 
-URBAN_CLUSTER_CODES = [
-    scheme.URBAN_CENTRE,
-    scheme.DENSE_URBAN_CLUSTER,
-    scheme.SEMI_DENSE_URBAN_CLUSTER,
-    scheme.SUBURBAN,
-]
-
 
 def cluster_types(
     params: DegurbaParameters,
@@ -38,7 +35,6 @@ def cluster_types(
             [scheme.SEMI_DENSE_URBAN_CLUSTER],
             params.sduc_contiguity,
         ),
-        "urban_cluster": (URBAN_CLUSTER_CODES, params.ucl_contiguity),
         "rural_cluster": ([scheme.RURAL_CLUSTER], params.rc_contiguity),
     }
 
@@ -110,10 +106,12 @@ def cluster_table(
     half-open: rows `row_start` to `row_stop` - 1, and likewise for columns.
     `transform` and `crs` place the class raster.
     """
-    codes, centres = classification.codes, classification.urban_centres
+    codes = classification.codes
     frames = [
-        summarise(
-            "urban_centre", centres, int(centres.max()), codes, inputs, transform, crs
+        summarise(cluster_type, ids, int(ids.max()), codes, inputs, transform, crs)
+        for cluster_type, ids in (
+            ("urban_centre", classification.urban_centres),
+            ("urban_cluster", classification.urban_clusters),
         )
     ]
     for cluster_type, (class_codes, contiguity) in cluster_types(params).items():
