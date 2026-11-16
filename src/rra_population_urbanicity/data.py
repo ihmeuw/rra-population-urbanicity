@@ -10,7 +10,8 @@ grids/<grid>/<layer>/<source>/<version components...>/<time point>.tif
 classifications/<version>/
     One run of a classification specification: the saved specification,
     the class scheme, a manifest of what the run resolved, and per time point
-    a class raster under classes/ and a cluster table under clusters/.
+    a class raster under classes/, an urban-centre id raster under
+    urban_centres/ and a cluster table under clusters/.
 """
 
 from pathlib import Path
@@ -49,6 +50,9 @@ class UrbanicityData:
 
     def class_raster_path(self, version: str, time_point: str) -> Path:
         return self.classification_root(version) / "classes" / f"{time_point}.tif"
+
+    def urban_centre_raster_path(self, version: str, time_point: str) -> Path:
+        return self.classification_root(version) / "urban_centres" / f"{time_point}.tif"
 
     def cluster_table_path(self, version: str, time_point: str) -> Path:
         return self.classification_root(version) / "clusters" / f"{time_point}.parquet"

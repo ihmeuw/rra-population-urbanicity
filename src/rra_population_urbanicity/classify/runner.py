@@ -8,6 +8,9 @@ A run writes, under classifications/<version>/:
   and the built-up per person, for each time point), the region if the run
   was limited to one, and the number of cells in each class;
 - classes/<time_point>.tif: the class raster for each time point;
+- urban_centres/<time_point>.tif: each cell's urban-centre id, 0 outside
+  urban centres, matching `cluster_id` in the cluster table. Centres that
+  touch stay separate here, which the class raster cannot show;
 - clusters/<time_point>.parquet: the clusters of each time point (see
   `clusters.cluster_table`).
 """
@@ -35,8 +38,14 @@ from rra_population_urbanicity.grid import BoolArray, GridDefinition
 from rra_population_urbanicity.inputs.providers import ghsl
 from rra_population_urbanicity.specification import ClassificationSpecification
 
-# Tiles of the class rasters, in cells.
+# Tiles of the output rasters, in cells.
 BLOCK_SIZE = 512
+# The files a run writes for each time point, under its version directory.
+OUTPUTS = {
+    "classes": "classes/<time_point>.tif",
+    "urban_centres": "urban_centres/<time_point>.tif",
+    "clusters": "clusters/<time_point>.parquet",
+}
 
 
 def reserve_version(root: Path) -> str:
@@ -130,6 +139,28 @@ def fixed_built_threshold(
     return built_threshold(inputs, spec)
 
 
+def raster_profile(
+    values: rules.CodeArray | rules.LabelArray,
+    grid: GridDefinition,
+    window: Window,
+    nodata: int | None,
+) -> dict[str, Any]:
+    return {
+        "driver": "GTiff",
+        "height": values.shape[0],
+        "width": values.shape[1],
+        "count": 1,
+        "dtype": values.dtype.name,
+        "crs": grid.crs,
+        "transform": windows.transform(window, grid.transform),
+        "nodata": nodata,
+        "tiled": True,
+        "blockxsize": BLOCK_SIZE,
+        "blockysize": BLOCK_SIZE,
+        "compress": "deflate",
+    }
+
+
 def write_classes(
     path: Path,
     codes: rules.CodeArray,
@@ -138,27 +169,23 @@ def write_classes(
     scheme: ClassScheme,
 ) -> None:
     mkdir(path.parent, parents=True, exist_ok=True)
-    profile = {
-        "driver": "GTiff",
-        "height": codes.shape[0],
-        "width": codes.shape[1],
-        "count": 1,
-        "dtype": "uint8",
-        "crs": grid.crs,
-        "transform": windows.transform(window, grid.transform),
-        "nodata": scheme.nodata,
-        "tiled": True,
-        "blockxsize": BLOCK_SIZE,
-        "blockysize": BLOCK_SIZE,
-        "compress": "deflate",
-    }
     colours = {
         c.code: (*(int(c.colour[i : i + 2], 16) for i in (1, 3, 5)), 255)
         for c in scheme.classes
     }
-    with rasterio.open(path, "w", **profile) as dst:
+    with rasterio.open(
+        path, "w", **raster_profile(codes, grid, window, scheme.nodata)
+    ) as dst:
         dst.write(codes, 1)
         dst.write_colormap(1, colours)
+
+
+def write_urban_centres(
+    path: Path, ids: rules.LabelArray, grid: GridDefinition, window: Window
+) -> None:
+    mkdir(path.parent, parents=True, exist_ok=True)
+    with rasterio.open(path, "w", **raster_profile(ids, grid, window, None)) as dst:
+        dst.write(ids, 1)
 
 
 def run(
@@ -196,6 +223,12 @@ def run(
         write_classes(
             data.class_raster_path(version, time_point), codes, grid, window, DEGURBA_L2
         )
+        write_urban_centres(
+            data.urban_centre_raster_path(version, time_point),
+            classification.urban_centres,
+            grid,
+            window,
+        )
         table_path = data.cluster_table_path(version, time_point)
         mkdir(table_path.parent, parents=True, exist_ok=True)
         transform = windows.transform(window, grid.transform)
@@ -230,6 +263,7 @@ def run(
         "built_up_layer": "none: read as zero"
         if spec.built is None
         else "from the specification",
+        "outputs": OUTPUTS,
         "time_points": resolved,
     }
     (root / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))

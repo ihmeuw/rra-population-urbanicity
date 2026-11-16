@@ -45,13 +45,21 @@ def test_a_run_writes_a_new_version(ghsl_world: Path) -> None:
 
     with rasterio.open(root / "classes" / "2020q1.tif") as src:
         codes = src.read(1)
+        class_transform = src.transform
         assert src.nodata == scheme.NODATA
         assert src.colormap(1)[scheme.URBAN_CENTRE] == (255, 0, 0, 255)
     assert (codes[2:7, 2:7] == scheme.URBAN_CENTRE).all()
     assert (codes[:, 9] == scheme.WATER).all()
 
+    with rasterio.open(root / "urban_centres" / "2020q1.tif") as src:
+        ids = src.read(1)
+        assert src.dtypes[0] == "int32"
+        assert src.transform == class_transform
+    np.testing.assert_array_equal(ids > 0, codes == scheme.URBAN_CENTRE)
+
     clusters = pd.read_parquet(root / "clusters" / "2020q1.parquet")
     town = clusters.set_index("cluster_type").loc["urban_centre"]
+    assert set(np.unique(ids[ids > 0])) == {town["cluster_id"]}
     assert town[["population", "cells"]].tolist() == [50_000, 25]
     assert town[["row_start", "row_stop", "col_start", "col_stop"]].tolist() == [
         2,
@@ -67,6 +75,9 @@ def test_a_run_writes_a_new_version(ghsl_world: Path) -> None:
     assert resolved["2025q1"]["built_per_person"] == pytest.approx(25 * 0.6 / 50_000)
     assert resolved["2020q1"]["cells_by_class"][scheme.URBAN_CENTRE] == 25
     assert manifest(root)["region"] is None
+    assert (
+        manifest(root)["outputs"]["urban_centres"] == "urban_centres/<time_point>.tif"
+    )
 
 
 def test_each_time_point_can_compute_its_own_threshold(ghsl_world: Path) -> None:

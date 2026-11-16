@@ -75,6 +75,9 @@ def test_classification_paths(tmp_path: Path) -> None:
     assert data.class_raster_path("2026_11_13.001", "2020q1") == (
         root / "classes" / "2020q1.tif"
     )
+    assert data.urban_centre_raster_path("2026_11_13.001", "2020q1") == (
+        root / "urban_centres" / "2020q1.tif"
+    )
     assert data.cluster_table_path("2026_11_13.001", "2020q1") == (
         root / "clusters" / "2020q1.parquet"
     )
