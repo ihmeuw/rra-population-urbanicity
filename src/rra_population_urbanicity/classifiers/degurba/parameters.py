@@ -86,12 +86,12 @@ class DegurbaParameters(BaseModel):
     # Low density rural cells (class 12).
     ldr_density: PositiveFloat
 
-    # The built-up share above which a cell counts towards classes 30 and 23
-    # when the built-up criterion is on. "optimal" computes it from the data
-    # (footnote 30): the average built-up share in rook clusters of cells above
-    # the urban-centre density that hold at least `built_threshold_cluster_size`
-    # people, on the `built_threshold_epoch` time point, or on each time point's
-    # own built-up layer.
+    # The built-up share a cell needs to count towards classes 30 and 23 when
+    # the built-up criterion is on. "optimal" computes it from the data
+    # (footnote 30): the average built-up share in clusters (`uc_contiguity`) of
+    # cells that pass the urban-centre density test and hold at least
+    # `built_threshold_cluster_size` people, on the `built_threshold_epoch` time
+    # point, or on each time point's own built-up layer.
     built_threshold: Literal["optimal"] | Annotated[float, Field(ge=0, le=1)]
     built_threshold_epoch: TimePoint | Literal["each_time_point"]
     built_threshold_cluster_size: PositiveFloat
@@ -161,6 +161,12 @@ PARAMETER_SETS = {
     # For Populace runs: the built-up criterion is off until its threshold has
     # been computed on our own built-up data.
     "populace_default": GHSL_R2023A.model_copy(
-        update={"uc_built_criterion": False, "duc_built_criterion": False}
+        update={
+            "uc_built_criterion": False,
+            "duc_built_criterion": False,
+            # Provisional: how densities are guarded where land is scarce is
+            # settled by the land-layer investigation in M2.
+            "density_on_land": "built_up_and_population",
+        }
     ),
 }

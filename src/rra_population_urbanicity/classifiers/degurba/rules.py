@@ -174,9 +174,10 @@ def optimal_built_threshold(
 ) -> float:
     """The built-up threshold computed from the data (fn 30).
 
-    The average built-up share in rook clusters of cells at or above the
-    urban-centre density that hold at least `built_threshold_cluster_size`
-    people, averaged as `built_threshold_average` says.
+    The average built-up share in clusters (`uc_contiguity`) of cells that pass
+    the urban-centre density test and hold at least
+    `built_threshold_cluster_size` people, averaged as `built_threshold_average`
+    says. Both tests follow `strict_thresholds`.
     """
     strict = params.strict_thresholds
     labels, n = label(
