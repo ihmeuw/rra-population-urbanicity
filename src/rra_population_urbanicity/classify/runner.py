@@ -27,9 +27,9 @@ from rra_tools.cli_tools import with_output_directory
 from rra_tools.shell_tools import mkdir
 
 from rra_population_urbanicity import constants as puc
-from rra_population_urbanicity.classify.base import ClassScheme
-from rra_population_urbanicity.classify.degurba import clusters, rules
-from rra_population_urbanicity.classify.degurba.scheme import DEGURBA_L2
+from rra_population_urbanicity.classifiers.base import ClassScheme
+from rra_population_urbanicity.classifiers.degurba import clusters, rules
+from rra_population_urbanicity.classifiers.degurba.scheme import DEGURBA_L2
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import BoolArray, GridDefinition
 from rra_population_urbanicity.inputs.providers import ghsl

@@ -13,9 +13,9 @@ from rasterio.windows import Window
 from rra_tools.shell_tools import mkdir
 
 from rra_population_urbanicity import constants as puc
+from rra_population_urbanicity.classifiers.base import ClassScheme
+from rra_population_urbanicity.classifiers.degurba import scheme
 from rra_population_urbanicity.classify import runner
-from rra_population_urbanicity.classify.base import ClassScheme
-from rra_population_urbanicity.classify.degurba import scheme
 from rra_population_urbanicity.cli import purun
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GridDefinition

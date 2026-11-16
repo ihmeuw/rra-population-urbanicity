@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from rra_population_urbanicity.classify.base import ClassDef, ClassScheme
-from rra_population_urbanicity.classify.degurba.scheme import DEGURBA_L2
+from rra_population_urbanicity.classifiers.base import ClassDef, ClassScheme
+from rra_population_urbanicity.classifiers.degurba.scheme import DEGURBA_L2
 
 
 def test_a_scheme_round_trips_through_yaml(tmp_path: Path) -> None:

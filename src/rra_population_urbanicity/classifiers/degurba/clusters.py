@@ -14,8 +14,8 @@ from affine import Affine
 from rasterio import warp
 from scipy import ndimage
 
-from rra_population_urbanicity.classify.degurba import rules, scheme
-from rra_population_urbanicity.classify.degurba.parameters import (
+from rra_population_urbanicity.classifiers.degurba import rules, scheme
+from rra_population_urbanicity.classifiers.degurba.parameters import (
     Contiguity,
     DegurbaParameters,
 )

@@ -18,7 +18,7 @@ from pydantic import (
     model_validator,
 )
 
-from rra_population_urbanicity.classify.degurba.parameters import (
+from rra_population_urbanicity.classifiers.degurba.parameters import (
     PARAMETER_SETS,
     DegurbaParameters,
 )

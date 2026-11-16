@@ -3,7 +3,7 @@ import pytest
 from affine import Affine
 from rasterio import warp
 
-from rra_population_urbanicity.classify.degurba import clusters, rules
+from rra_population_urbanicity.classifiers.degurba import clusters, rules
 from tests.test_degurba_rules import BASE, scene
 
 TRANSFORM = Affine(1000.0, 0.0, 0.0, 0.0, -1000.0, 0.0)

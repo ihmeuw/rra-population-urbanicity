@@ -26,8 +26,11 @@ from rra_tools.cli_tools import with_output_directory
 from rra_tools.shell_tools import mkdir
 
 from rra_population_urbanicity import constants as puc
-from rra_population_urbanicity.classify.degurba import rules
-from rra_population_urbanicity.classify.degurba.scheme import DEGURBA_L2, URBAN_CENTRE
+from rra_population_urbanicity.classifiers.degurba import rules
+from rra_population_urbanicity.classifiers.degurba.scheme import (
+    DEGURBA_L2,
+    URBAN_CENTRE,
+)
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.inputs.providers import ghsl
 from rra_population_urbanicity.reference.ghsl import GhslRaster, check_on_grid

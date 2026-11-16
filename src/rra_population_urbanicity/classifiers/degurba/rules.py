@@ -16,8 +16,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy import ndimage
 
-from rra_population_urbanicity.classify.degurba import scheme
-from rra_population_urbanicity.classify.degurba.parameters import (
+from rra_population_urbanicity.classifiers.degurba import scheme
+from rra_population_urbanicity.classifiers.degurba.parameters import (
     Contiguity,
     DegurbaParameters,
 )

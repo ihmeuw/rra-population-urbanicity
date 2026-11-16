@@ -4,8 +4,8 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from rra_population_urbanicity.classify.degurba import rules, scheme
-from rra_population_urbanicity.classify.degurba.parameters import (
+from rra_population_urbanicity.classifiers.degurba import rules, scheme
+from rra_population_urbanicity.classifiers.degurba.parameters import (
     GHSL_R2023A,
     DegurbaParameters,
 )

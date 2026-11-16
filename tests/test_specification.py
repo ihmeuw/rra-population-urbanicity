@@ -7,7 +7,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from rra_population_urbanicity.classify.degurba.parameters import PARAMETER_SETS
+from rra_population_urbanicity.classifiers.degurba.parameters import PARAMETER_SETS
 from rra_population_urbanicity.grid import GRIDS
 from rra_population_urbanicity.specification import ClassificationSpecification
 

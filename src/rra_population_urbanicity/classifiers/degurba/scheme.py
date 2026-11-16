@@ -4,7 +4,7 @@ Codes and colours are GHS-SMOD's own (its .clr colour table), so our class
 rasters and figures read like GHS-SMOD's.
 """
 
-from rra_population_urbanicity.classify.base import ClassDef, ClassScheme
+from rra_population_urbanicity.classifiers.base import ClassDef, ClassScheme
 
 URBAN_CENTRE = 30
 DENSE_URBAN_CLUSTER = 23
