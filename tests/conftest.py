@@ -5,10 +5,13 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 import rasterio
+from affine import Affine
 
 from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GRIDS, GridDefinition
+from rra_population_urbanicity.inputs import blocks
+from rra_population_urbanicity.inputs.blocks import MODEL_CRS
 from rra_population_urbanicity.reference.ghsl import GhslRaster
 
 # A grid of 12 x 12 cells of 1 km at the origin of World Mollweide.
@@ -107,3 +110,45 @@ def ghsl_spec(**parameters: Any) -> dict[str, Any]:
             "parameters": parameters,
         },
     }
+
+
+@pytest.fixture
+def small_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shrink the model grid's blocks to 4 pixels and its group tiles to 2 x 2 blocks.
+
+    The raster is 10 pixels wide and 7 high, so there are 3 x 2 blocks, and the
+    last column and row of blocks are cut short. Its top-left corner is 120 m
+    west and 80 m north of the origin, so the first block straddles the equator
+    and the prime meridian.
+    """
+    monkeypatch.setattr(blocks, "X_MIN", -120.0)
+    monkeypatch.setattr(blocks, "Y_MAX", 80.0)
+    monkeypatch.setattr(
+        blocks, "MODEL_TRANSFORM", Affine(40.0, 0.0, -120.0, 0.0, -40.0, 80.0)
+    )
+    monkeypatch.setattr(blocks, "BLOCK_PIXELS", 4)
+    monkeypatch.setattr(blocks, "GROUP_BLOCKS", 2)
+    monkeypatch.setattr(blocks, "WIDTH", 10)
+    monkeypatch.setattr(blocks, "HEIGHT", 7)
+    monkeypatch.setattr(blocks, "N_BLOCK_COLS", 3)
+    monkeypatch.setattr(blocks, "N_BLOCK_ROWS", 2)
+
+
+def write_model_raster(
+    path: Path, values: npt.NDArray[Any], transform: Affine, crs: str = MODEL_CRS
+) -> None:
+    """Write a float32 raster with NaN as nodata, as the model's outputs are."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=values.shape[0],
+        width=values.shape[1],
+        count=1,
+        dtype="float32",
+        crs=crs,
+        transform=transform,
+        nodata=np.nan,
+    ) as dst:
+        dst.write(values.astype(np.float32), 1)

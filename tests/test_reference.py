@@ -96,8 +96,9 @@ def test_raster_urls_and_directories() -> None:
     )
 
 
-def test_the_reproduction_needs_nine_rasters() -> None:
-    assert len({raster.stem for raster in ghsl.GHSL_RASTERS}) == 9
+def test_ten_distinct_rasters_are_downloaded() -> None:
+    # Nine for the reproduction, and GHS-LAND at 100 m.
+    assert len({raster.stem for raster in ghsl.GHSL_RASTERS}) == 10
 
 
 def test_download_raster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,11 +141,13 @@ def test_ghsl_command_downloads_everything(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downloads: list[Path] = []
+    grids: dict[str, GridDefinition] = {}
 
     def download_raster(
         raster: ghsl.GhslRaster, out_dir: Path, grid: GridDefinition
     ) -> Path:
         downloads.append(out_dir / raster.stem)
+        grids[raster.stem] = grid
         return out_dir
 
     def download_data_package(out_dir: Path) -> Path:
@@ -159,6 +162,11 @@ def test_ghsl_command_downloads_everything(
 
     assert result.exit_code == 0, result.output
     reference = tmp_path / "reference" / "ghsl"
-    assert len(downloads) == 10
+    assert len(downloads) == 11
     assert reference / "ghs_smod" / "r2023a_v2" / SMOD_2025_V2.stem in downloads
+    # GHS-LAND comes at 100 m too, checked against GHSL's 100 m grid.
+    land_100m = "GHS_LAND_E2018_GLOBE_R2022A_54009_100_V1_0"
+    assert reference / "ghs_land" / "r2022a" / land_100m in downloads
+    assert grids[land_100m] == ghsl.MOLL_100M
+    assert grids[SMOD_2025_V2.stem].name == "moll_1km"
     assert downloads[-1] == reference / "data_package" / ghsl.DATA_PACKAGE_RELEASE

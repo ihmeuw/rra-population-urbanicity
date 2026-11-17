@@ -29,9 +29,20 @@ DATA_PACKAGE_RELEASE = "2023_2024-09-24"
 TIMEOUT_SECONDS = 60
 CHUNK_BYTES = 2**20
 
+# The 100 m grid of GHSL's layers, which nests 10 x 10 in `moll_1km`.
+MOLL_100M = GridDefinition(
+    name="moll_100m",
+    crs=puc.CRSES["mollweide"],
+    cell_size=100.0,
+    x_min=-18_041_000.0,
+    y_max=9_000_000.0,
+    n_rows=180_000,
+    n_cols=360_820,
+)
+
 
 class GhslRaster(BaseModel):
-    """A GHSL raster on the 1 km World Mollweide grid."""
+    """A GHSL raster on the World Mollweide grid at 1 km or 100 m."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -39,18 +50,26 @@ class GhslRaster(BaseModel):
     release: Literal["R2022A", "R2023A"]
     epoch: int
     version: Literal[1, 2] = 1
+    resolution: Literal[100, 1000] = 1000
 
     @property
     def stem(self) -> str:
-        return f"GHS_{self.product}_E{self.epoch}_GLOBE_{self.release}_54009_1000_V{self.version}_0"
+        return (
+            f"GHS_{self.product}_E{self.epoch}_GLOBE_{self.release}"
+            f"_54009_{self.resolution}_V{self.version}_0"
+        )
 
     @property
     def url(self) -> str:
         return (
             f"{GHSL_FTP_ROOT}/GHS_{self.product}_GLOBE_{self.release}"
-            f"/GHS_{self.product}_E{self.epoch}_GLOBE_{self.release}_54009_1000"
+            f"/GHS_{self.product}_E{self.epoch}_GLOBE_{self.release}_54009_{self.resolution}"
             f"/V{self.version}-0/{self.stem}.zip"
         )
+
+    @property
+    def grid(self) -> GridDefinition:
+        return {1000: GRIDS["moll_1km"], 100: MOLL_100M}[self.resolution]
 
     @property
     def product_dir(self) -> str:
@@ -66,7 +85,8 @@ class GhslRaster(BaseModel):
 
 
 # Everything the GHS-SMOD reproduction needs: the inputs and both versions of
-# GHS-SMOD itself, for 2020 and 2025. GHS-LAND has a single epoch.
+# GHS-SMOD itself, for 2020 and 2025. GHS-LAND has a single epoch, and is also
+# downloaded at 100 m.
 GHSL_RASTERS = [
     GhslRaster(product="POP", release="R2023A", epoch=2020),
     GhslRaster(product="POP", release="R2023A", epoch=2025),
@@ -77,6 +97,8 @@ GHSL_RASTERS = [
     GhslRaster(product="SMOD", release="R2023A", epoch=2025, version=1),
     GhslRaster(product="SMOD", release="R2023A", epoch=2025, version=2),
     GhslRaster(product="LAND", release="R2022A", epoch=2018),
+    # For a land layer on the 40 m model grid (the land-source investigation).
+    GhslRaster(product="LAND", release="R2022A", epoch=2018, resolution=100),
 ]
 
 
@@ -133,6 +155,6 @@ def download_ghsl(output_dir: str) -> None:
     data = UrbanicityData(output_dir)
     for raster in GHSL_RASTERS:
         out_dir = data.reference_root("ghsl", raster.product_dir, raster.release_dir)
-        print(download_raster(raster, out_dir, GRIDS["moll_1km"]))
+        print(download_raster(raster, out_dir, raster.grid))
     out_dir = data.reference_root("ghsl", "data_package", DATA_PACKAGE_RELEASE)
     print(download_data_package(out_dir))

@@ -5,6 +5,9 @@ from pydantic import StringConstraints
 
 RRA_ROOT = Path("/mnt/team/rapidresponse/")
 URBANICITY_ROOT = RRA_ROOT / "pub" / "population-urbanicity"
+# The outputs of rra-population-model and rra-building-density, read as inputs.
+POPULATION_MODEL_ROOT = RRA_ROOT / "pub" / "population-model"
+BUILDING_DENSITY_ROOT = RRA_ROOT / "pub" / "building-density"
 
 CRSES = {
     # World Mollweide: the GHSL grid, and the default grid for classification.
@@ -27,4 +30,6 @@ STATIC = "static"
 REGIONS = {
     # Belgium, as in the flexurba vignette.
     "belgium": (2.0, 49.0, 7.0, 52.0),
+    # Bangladesh: Dhaka, the Sylhet haors and the Jamuna chars.
+    "bangladesh": (87.5, 20.1, 93.2, 27.1),
 }
