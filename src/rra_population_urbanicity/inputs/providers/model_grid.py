@@ -33,4 +33,5 @@ def read_block(path: Path, block: Block, window: Window) -> Float32Array:
     if values.shape != block.shape:
         msg = f"{path} holds {values.shape} pixels of block {block.key}, not {block.shape}."
         raise ValueError(msg)
-    return np.nan_to_num(values, nan=0.0, copy=False)
+    np.copyto(values, np.float32(0.0), where=np.isnan(values))
+    return values

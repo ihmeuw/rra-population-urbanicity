@@ -171,10 +171,16 @@ def aggregate_block(
     if any(isinstance(layer.source, GhsLandOrMicrosoftWaterSource) for layer in layers):
         ghs_land = ghsl.sample_land_100m(data, x, y)
     del x, y
+    # Number the cells the block's pixels fall in 0, 1, ..., in grid order.
     first_row = int(cell_row.min())
-    size = (int(cell_row.max()) - first_row + 1) * grid.n_cols
-    local = ((cell_row - first_row).astype(np.int64) * grid.n_cols + cell_col).ravel()
+    span = ((cell_row - first_row).astype(np.int64) * grid.n_cols + cell_col).ravel()
     del cell_row, cell_col
+    occupied = np.flatnonzero(np.bincount(span))
+    number = np.zeros(int(occupied[-1]) + 1, dtype=np.int32)
+    number[occupied] = np.arange(occupied.size, dtype=np.int32)
+    local = number[span]
+    del span, number
+    size = occupied.size
     pixels = np.bincount(local, minlength=size)
 
     # Cells on the block's edges may hold pixels of its neighbours too.
@@ -219,8 +225,8 @@ def aggregate_block(
         sums[layer.key] = np.bincount(local, weights=values.ravel(), minlength=size)
         keep |= sums[layer.key] != 0
 
-    cells = np.flatnonzero(keep & (pixels > 0))
-    result["cells"] = (cells + first_row * grid.n_cols).astype(np.int32)
+    cells = np.flatnonzero(keep)
+    result["cells"] = (occupied[cells] + first_row * grid.n_cols).astype(np.int32)
     result["pixels"] = pixels[cells].astype(np.uint16)
     for layer in layers:
         dtype = np.float64 if layer.summed else np.float32
