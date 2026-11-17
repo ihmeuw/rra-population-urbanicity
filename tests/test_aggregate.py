@@ -173,6 +173,7 @@ def test_population_is_summed_from_every_block_into_each_cell(
     check = manifest["time_points"]["2023q1"]["conservation"]
     assert check["pixels"] == check["grid"] == 169
     assert check["beyond_grid"] == 0
+    assert check["worst_block_relative_error"] == 0
     assert manifest["time_points"]["2023q1"]["blocks"] == 6
 
 
@@ -227,11 +228,25 @@ def test_people_beyond_the_grid_are_recorded(
     assert check["grid"] + check["beyond_grid"] == check["pixels"]
 
 
-def test_population_must_be_conserved(
+def test_population_must_be_conserved_in_every_block(
     model_world: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(aggregate, "CONSERVATION_TOLERANCE", -1.0)
-    with pytest.raises(RuntimeError, match="is not conserved"):
+    # A block that loses its people's sums: the total over all blocks is off
+    # too, but by less than the block itself.
+    aggregate_block = aggregate.aggregate_block
+
+    def lossy(block: Block, *args: Any) -> dict[str, Any]:
+        arrays = aggregate_block(block, *args)
+        if block == Block(1, 0):
+            for key in arrays:
+                if key.startswith("sum:population"):
+                    arrays[key] = arrays[key] * 0
+        return arrays
+
+    monkeypatch.setattr(aggregate, "aggregate_block", lossy)
+    with pytest.raises(
+        RuntimeError, match=r"overall and 1\.00e\+00 in the worst block"
+    ):
         run(model_world, WATER_LAND)
 
 

@@ -11,8 +11,8 @@ The work is done in two parts:
   the block's sums for the cells it touches to a work directory.
 - The reduce adds the blocks into
   grids/<grid>/<layer>/<source>/<version...>/<time point>.tif, checks that
-  population is conserved, records the check in a manifest in each version
-  directory, and removes the work directory.
+  population is conserved in every block and overall, records the check in a
+  manifest in each version directory, and removes the work directory.
 
 The classification grid stops short of the poles (`moll_1km` at 89.09°), so
 pixels beyond it are left out, and the people in them are recorded.
@@ -309,13 +309,21 @@ def reduce(work_dir: Path) -> None:
             pixels[block["cells"]] += block["pixels"]
     for layer in plan.layers:
         sums = np.zeros(grid.n_rows * grid.n_cols)
-        total = beyond = 0.0
+        total = beyond = worst_block = 0.0
         for path in paths:
             with np.load(path) as block:
-                sums[block["cells"]] += block[f"sum:{layer.key}"]
+                block_sums = block[f"sum:{layer.key}"]
+                sums[block["cells"]] += block_sums
                 if layer.summed:
-                    total += float(block[f"total:{layer.key}"])
-                    beyond += float(block[f"beyond:{layer.key}"])
+                    block_total = float(block[f"total:{layer.key}"])
+                    block_beyond = float(block[f"beyond:{layer.key}"])
+                    worst_block = max(
+                        worst_block,
+                        abs(float(block_sums.sum()) + block_beyond - block_total)
+                        / max(block_total, 1.0),
+                    )
+                    total += block_total
+                    beyond += block_beyond
         entry: dict[str, Any] = {
             "created": datetime.datetime.now(tz=datetime.UTC).isoformat(
                 timespec="seconds"
@@ -332,9 +340,13 @@ def reduce(work_dir: Path) -> None:
                 "grid": on_grid,
                 "beyond_grid": beyond,
                 "relative_error": error,
+                "worst_block_relative_error": worst_block,
             }
-            if error > CONSERVATION_TOLERANCE:
-                msg = f"{layer.key} is not conserved: relative error {error:.2e}."
+            if max(error, worst_block) > CONSERVATION_TOLERANCE:
+                msg = (
+                    f"{layer.key} is not conserved: relative error {error:.2e} "
+                    f"overall and {worst_block:.2e} in the worst block."
+                )
                 raise RuntimeError(msg)
             values = sums
         else:
