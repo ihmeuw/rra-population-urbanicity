@@ -164,8 +164,8 @@ PARAMETER_SETS = {
         update={
             "uc_built_criterion": False,
             "duc_built_criterion": False,
-            # Provisional: how densities are guarded where land is scarce is
-            # settled by the land-layer investigation in M2.
+            # GHSL's own rule, with no floor on the land share: Populace runs
+            # use GHS-LAND, GHS-SMOD's land layer, and guard densities as it does.
             "density_on_land": "built_up_and_population",
         }
     ),

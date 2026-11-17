@@ -1,5 +1,4 @@
-# An example Populace run. The land source is provisional: the land layer for
-# Populace runs has not been chosen yet.
+# An example Populace run. Its land layer is GHS-LAND, the one GHS-SMOD uses.
 population:
   source: populace
   # Quoted: YAML reads an unquoted 2026_10_02.001 as the number 20261002.001.
