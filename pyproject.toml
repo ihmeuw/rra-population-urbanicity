@@ -150,8 +150,10 @@ disallow_any_unimported = false
 # add overrides for them. Avoid changing the global config!
 [[tool.mypy.overrides]]
 module = [
+    "geopandas.*",
     "pandas.*",
     "rasterio.*",
     "scipy.*",
+    "shapely.*",
 ]
 ignore_missing_imports = true

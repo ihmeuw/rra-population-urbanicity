@@ -81,3 +81,8 @@ def test_classification_paths(tmp_path: Path) -> None:
     assert data.cluster_table_path("2026_11_13.001", "2020q1") == (
         root / "clusters" / "2020q1.parquet"
     )
+
+
+def test_admin_raster_path(tmp_path: Path) -> None:
+    path = UrbanicityData(tmp_path).admin_raster_path("moll_1km", "lsae_1578_a0")
+    assert path == tmp_path / "admin-rasters" / "moll_1km" / "lsae_1578_a0.tif"

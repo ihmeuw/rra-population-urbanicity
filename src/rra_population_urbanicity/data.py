@@ -7,6 +7,9 @@ grids/<grid>/<layer>/<source>/<version components...>/<time point>.tif
     Input layers on a classification grid, shared by every classification
     that uses the same source version. Layers that do not vary in time use
     the time point "static".
+admin-rasters/<grid>/<shapes>.tif
+    Each cell's administrative unit (location_id) under a shapes version,
+    such as lsae_1578_a0, from the shape containing the cell's centre.
 classifications/<version>/
     One run of a classification specification: the saved specification,
     the class scheme, a manifest of what the run resolved, and per time point
@@ -56,6 +59,9 @@ class UrbanicityData:
 
     def cluster_table_path(self, version: str, time_point: str) -> Path:
         return self.classification_root(version) / "clusters" / f"{time_point}.parquet"
+
+    def admin_raster_path(self, grid: str, shapes: str) -> Path:
+        return self.root / "admin-rasters" / grid / f"{shapes}.tif"
 
     def grid_path(
         self, grid: str, layer: Layer, source: GridSource, time_point: str
