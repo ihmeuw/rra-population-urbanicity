@@ -350,12 +350,14 @@ def reduce(work_dir: Path) -> None:
     shutil.rmtree(work_dir)
 
 
+# Profiled on six blocks (dense, high latitude, polar, ocean, cut short): at
+# most 133 s when reading cold, and at most 4.7 GB.
 TASK_RESOURCES: dict[str, str | int] = {
     "queue": "all.q",
     "project": "proj_rapidresponse",
     "cores": 1,
-    "memory": "16G",
-    "runtime": "60m",
+    "memory": "8G",
+    "runtime": "30m",
 }
 
 
