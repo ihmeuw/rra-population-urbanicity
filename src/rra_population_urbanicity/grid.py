@@ -155,7 +155,13 @@ def pixel_to_cell(
     tuple[IntArray, IntArray]
         The grid row and column of each pixel, each with the raster's shape.
     """
+    return grid.cell_index(*pixel_centres_in(transform, shape, crs, grid.crs))
+
+
+def pixel_centres_in(
+    transform: Affine, shape: tuple[int, int], crs: str, target_crs: str
+) -> tuple[FloatArray, FloatArray]:
+    """Return the centre of every pixel of a raster in another CRS."""
     x, y = pixel_centres(transform, shape)
-    transformer = pyproj.Transformer.from_crs(crs, grid.crs, always_xy=True)
-    x, y = transformer.transform(x, y)
-    return grid.cell_index(x, y)
+    transformer = pyproj.Transformer.from_crs(crs, target_crs, always_xy=True)
+    return transformer.transform(x, y)

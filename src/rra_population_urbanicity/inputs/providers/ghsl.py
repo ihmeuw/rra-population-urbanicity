@@ -6,6 +6,8 @@ m² per cell, are converted to shares of the cell. Missing values are read the
 way GHS-SMOD reads them: no people, no built-up, and no land (water).
 """
 
+from pathlib import Path
+
 import numpy as np
 import numpy.typing as npt
 import rasterio
@@ -13,9 +15,14 @@ from rasterio.windows import Window
 
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GridDefinition
-from rra_population_urbanicity.reference.ghsl import GhslRaster, check_on_grid
+from rra_population_urbanicity.reference.ghsl import (
+    MOLL_100M,
+    GhslRaster,
+    check_on_grid,
+)
 from rra_population_urbanicity.specification import (
     GhsBuiltSSource,
+    GhsLandOrMicrosoftWaterSource,
     GhsLandSource,
     GhsPopSource,
     MicrosoftDensitySource,
@@ -24,11 +31,14 @@ from rra_population_urbanicity.specification import (
 )
 
 type FloatArray = npt.NDArray[np.float64]
+type Float32Array = npt.NDArray[np.float32]
+type IntArray = npt.NDArray[np.int32]
 type Source = (
     PopulaceSource
     | GhsPopSource
     | GhsLandSource
     | MicrosoftWaterSource
+    | GhsLandOrMicrosoftWaterSource
     | GhsBuiltSSource
     | MicrosoftDensitySource
 )
@@ -77,3 +87,43 @@ def load(
     if raster.product != "POP":
         values /= grid.cell_size**2
     return values
+
+
+def sample_land_100m(
+    data: UrbanicityData, x: FloatArray, y: FloatArray
+) -> Float32Array:
+    """GHS-LAND's land share of the 100 m cell containing each point.
+
+    Points are in World Mollweide. A missing cell has no land, as at 1 km.
+    """
+    raster = GhslRaster(
+        product="LAND", release="R2022A", epoch=GHS_LAND_EPOCH, resolution=100
+    )
+    root = data.reference_root("ghsl", raster.product_dir, raster.release_dir)
+    path = root / f"{raster.stem}.tif"
+    check_on_grid(path, MOLL_100M)
+    rows, cols = MOLL_100M.cell_index(x, y)
+    # Points either side of the antimeridian are read as two windows, not one
+    # spanning the world.
+    if rows.size and cols.max() - cols.min() > MOLL_100M.n_cols // 2:
+        west = cols < MOLL_100M.n_cols // 2
+        result = np.empty(rows.shape, dtype=np.float32)
+        for part in (west, ~west):
+            result[part] = read_cells(path, rows[part], cols[part])
+        return result
+    return read_cells(path, rows, cols)
+
+
+def read_cells(path: Path, rows: IntArray, cols: IntArray) -> Float32Array:
+    """The land share of each cell given by its row and column, from one window."""
+    row_off, col_off = int(rows.min()), int(cols.min())
+    window = Window(
+        col_off, row_off, int(cols.max()) - col_off + 1, int(rows.max()) - row_off + 1
+    )
+    with rasterio.open(path) as src:
+        land = src.read(1, window=window)
+        nodata = src.nodata
+    share = land.astype(np.float32) / np.float32(MOLL_100M.cell_size**2)
+    share[land == nodata] = 0.0
+    result: Float32Array = share[rows - row_off, cols - col_off]
+    return result

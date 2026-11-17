@@ -32,6 +32,7 @@ from rra_population_urbanicity.classifiers.degurba.scheme import (
     URBAN_CENTRE,
 )
 from rra_population_urbanicity.data import UrbanicityData
+from rra_population_urbanicity.inputs import grids
 from rra_population_urbanicity.inputs.providers import ghsl
 from rra_population_urbanicity.reference.ghsl import GhslRaster, check_on_grid
 from rra_population_urbanicity.specification import ClassificationSpecification
@@ -130,8 +131,10 @@ def compare_time_point(
             )
             ours = ours_src.read(1, window=strip)
             reference = reference_src.read(1, window=grid_strip)
-            people = ghsl.load(data, spec.population, grid, time_point, grid_strip)
-            land = ghsl.load(data, spec.land, grid, time_point, grid_strip)
+            people = grids.load(
+                data, "population", spec.population, grid, time_point, grid_strip
+            )
+            land = grids.load(data, "land", spec.land, grid, time_point, grid_strip)
             compared = (reference != SMOD_NODATA) & (ours != DEGURBA_L2.nodata)
             masks = {
                 "all": compared,

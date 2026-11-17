@@ -35,7 +35,7 @@ from rra_population_urbanicity.classifiers.degurba import clusters, rules
 from rra_population_urbanicity.classifiers.degurba.scheme import DEGURBA_L2
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import BoolArray, GridDefinition
-from rra_population_urbanicity.inputs.providers import ghsl
+from rra_population_urbanicity.inputs import grids
 from rra_population_urbanicity.specification import ClassificationSpecification
 
 # Tiles of the output rasters, in cells.
@@ -82,12 +82,14 @@ def load_inputs(
     without a class.
     """
     grid, window = spec.grid, spec.grid.full_window
-    population = ghsl.load(data, spec.population, grid, time_point, window)
-    land = ghsl.load(data, spec.land, grid, time_point, window)
+    population = grids.load(
+        data, "population", spec.population, grid, time_point, window
+    )
+    land = grids.load(data, "land", spec.land, grid, time_point, window)
     if spec.built is None:
         built = np.zeros_like(population)
     else:
-        built = ghsl.load(data, spec.built, grid, time_point, window)
+        built = grids.load(data, "built", spec.built, grid, time_point, window)
     domain = domain | (population > 0) | (land > 0) | (built > 0)
     return rules.DegurbaInputs(population, land, built, domain, grid.cell_area_km2)
 

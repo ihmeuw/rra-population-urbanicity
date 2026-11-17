@@ -76,6 +76,22 @@ class MicrosoftWaterSource(_Spec):
         return (self.building_version,)
 
 
+class GhsLandOrMicrosoftWaterSource(_Spec):
+    """Land wherever GHS-LAND or the Microsoft water mask has it.
+
+    Combined on the 40 m model grid: each pixel takes the larger of the mask's
+    land (0 or 1) and GHS-LAND's land share of the 100 m cell containing it.
+    """
+
+    source: Literal["ghs_land_or_microsoft_water"]
+    ghs_land_release: Literal["r2022a"]
+    building_version: Literal["v8"]
+
+    @property
+    def version_components(self) -> tuple[str, ...]:
+        return self.ghs_land_release, self.building_version
+
+
 class GhsBuiltSSource(_GhslSource):
     source: Literal["ghs_built_s"]
     release: Literal["r2023a"]
@@ -97,7 +113,8 @@ PopulationSource = Annotated[
     PopulaceSource | GhsPopSource, Field(discriminator="source")
 ]
 LandSource = Annotated[
-    GhsLandSource | MicrosoftWaterSource, Field(discriminator="source")
+    GhsLandSource | MicrosoftWaterSource | GhsLandOrMicrosoftWaterSource,
+    Field(discriminator="source"),
 ]
 BuiltSource = Annotated[
     GhsBuiltSSource | MicrosoftDensitySource, Field(discriminator="source")
