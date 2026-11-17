@@ -359,6 +359,8 @@ TASK_RESOURCES: dict[str, str | int] = {
     "memory": "8G",
     "runtime": "30m",
 }
+# Block tasks running at once, to spare the shared file system they read from.
+CONCURRENCY_LIMIT = 200
 
 
 def run(
@@ -410,6 +412,7 @@ def run(
         node_args={"block-key": plan.blocks},
         task_args={"work-dir": str(work_dir)},
         task_resources=TASK_RESOURCES,
+        concurrency_limit=CONCURRENCY_LIMIT,
         max_attempts=1,
         log_root=data.root / "logs" / "aggregate",
     )
