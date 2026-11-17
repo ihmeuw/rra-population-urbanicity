@@ -43,6 +43,10 @@ type Source = (
     | MicrosoftDensitySource
 )
 
+# Points of GHS-LAND at 100 m read from one window at a time: 512 rows of a
+# block of the model grid.
+SAMPLE_RUN_POINTS = 2**22
+
 # GHS-LAND R2022A has a single epoch, which serves every time point.
 GHS_LAND_EPOCH = 2018
 GHSL_EPOCH_YEARS = 5
@@ -94,7 +98,13 @@ def sample_land_100m(
 ) -> Float32Array:
     """GHS-LAND's land share of the 100 m cell containing each point.
 
-    Points are in World Mollweide. A missing cell has no land, as at 1 km.
+    Points are in World Mollweide. They are read in runs of consecutive
+    points, each from a window just covering them, so points next to each
+    other in the arrays should be near each other on the ground, as a
+    raster's pixels read row by row are. One window for a whole block of the
+    model grid would not do: near the poles, far from the central meridian,
+    a block is a long slanting sliver of Mollweide, and its bounding window
+    billions of cells. A missing cell has no land, as at 1 km.
     """
     raster = GhslRaster(
         product="LAND", release="R2022A", epoch=GHS_LAND_EPOCH, resolution=100
@@ -102,16 +112,21 @@ def sample_land_100m(
     root = data.reference_root("ghsl", raster.product_dir, raster.release_dir)
     path = root / f"{raster.stem}.tif"
     check_on_grid(path, MOLL_100M)
-    rows, cols = MOLL_100M.cell_index(x, y)
-    # Points either side of the antimeridian are read as two windows, not one
-    # spanning the world.
-    if rows.size and cols.max() - cols.min() > MOLL_100M.n_cols // 2:
-        west = cols < MOLL_100M.n_cols // 2
-        result = np.empty(rows.shape, dtype=np.float32)
-        for part in (west, ~west):
-            result[part] = read_cells(path, rows[part], cols[part])
-        return result
-    return read_cells(path, rows, cols)
+    rows, cols = MOLL_100M.cell_index(x.ravel(), y.ravel())
+    result = np.empty(rows.size, dtype=np.float32)
+    half = MOLL_100M.n_cols // 2
+    for start in range(0, rows.size, SAMPLE_RUN_POINTS):
+        run = slice(start, start + SAMPLE_RUN_POINTS)
+        run_rows, run_cols = rows[run], cols[run]
+        # Points either side of the antimeridian are read as two windows,
+        # not one spanning the world.
+        if run_cols.max() - run_cols.min() > half:
+            west = run_cols < half
+            for part in (west, ~west):
+                result[run][part] = read_cells(path, run_rows[part], run_cols[part])
+        else:
+            result[run] = read_cells(path, run_rows, run_cols)
+    return result.reshape(x.shape)
 
 
 def read_cells(path: Path, rows: IntArray, cols: IntArray) -> Float32Array:

@@ -329,6 +329,26 @@ def test_ghs_land_at_100_m_is_read_either_side_of_the_antimeridian(
     assert share.tolist() == [0.5, 0.5]
 
 
+def test_ghs_land_at_100_m_is_read_in_runs_of_points(
+    model_world: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    land = np.full(TINY_100M.shape, 5000, dtype=np.uint16)
+    land[60:, :60] = 10_000  # south-west of the origin is all land
+    land[59, 59] = 65535  # and one missing cell north-west of it has none
+    raster = GhslRaster(product="LAND", release="R2022A", epoch=2018, resolution=100)
+    out_dir = UrbanicityData(model_world).reference_root(
+        "ghsl", raster.product_dir, raster.release_dir
+    )
+    write_raster(out_dir / f"{raster.stem}.tif", land, 65535, TINY_100M)
+    x = np.array([[-50.0, 50.0], [-50.0, 50.0]])
+    y = np.array([[50.0, 50.0], [-50.0, -50.0]])
+    expected = [[0.0, 0.5], [1.0, 0.5]]
+    data = UrbanicityData(model_world)
+    assert ghsl.sample_land_100m(data, x, y).tolist() == expected
+    monkeypatch.setattr(ghsl, "SAMPLE_RUN_POINTS", 3)
+    assert ghsl.sample_land_100m(data, x, y).tolist() == expected
+
+
 def test_a_block_task_aggregates_one_block(model_world: Path) -> None:
     spec = ClassificationSpecification.model_validate(model_spec(WATER_LAND))
     work_dir = model_world / "work"
