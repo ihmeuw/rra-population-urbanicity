@@ -13,6 +13,8 @@ from rra_tools import jobmon
 
 from rra_population_urbanicity import admin
 from rra_population_urbanicity import constants as puc
+from rra_population_urbanicity.classifiers.degurba import scheme
+from rra_population_urbanicity.classifiers.degurba.scheme import DEGURBA_L2
 from rra_population_urbanicity.cli import purun, putask
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GRIDS
@@ -20,7 +22,7 @@ from rra_population_urbanicity.inputs import blocks
 from rra_population_urbanicity.inputs.blocks import MODEL_CRS, Block
 from rra_population_urbanicity.inputs.providers import populace
 from rra_population_urbanicity.specification import ClassificationSpecification
-from rra_population_urbanicity.tabulate import population
+from rra_population_urbanicity.tabulate import classes, pixel_view, population
 from tests.conftest import TINY, write_model_raster, write_raster
 from tests.test_providers import POPULACE
 
@@ -133,6 +135,7 @@ def table_world(
                 "1,100,1001,12",
                 "1,200,2001,21",
             ],
+            "ihme_loc_id": ["G", "AAA", "BBB", "AAA_11", "AAA_12", "BBB_21"],
         }
     ).to_parquet(inputs / "hierarchy_test.parquet")
     pd.DataFrame(
@@ -300,3 +303,187 @@ def test_the_commands_tabulate_and_run_one_block(
         # Block (2, 0)'s 8 pixels: 4 in cell NE (unit 12) and 4 in cell SE (unit 21).
         assert block["population:2020q1"].tolist() == [4, 4]
         assert block["units:2020q1"].tolist() == [12, 21]
+
+
+VERSION = "2026_11_24.001"
+
+
+def write_classification(root: Path) -> None:
+    """A classification of the small frame's four cells, without running one.
+
+    One urban centre covers the cells north of the equator and the south-east
+    one, so it crosses from country 100 into country 200; the south-west cell
+    is a rural cluster. Every other cell is water.
+    """
+    data = UrbanicityData(root)
+    version_root = data.classification_root(VERSION)
+    version_root.mkdir(parents=True)
+    spec().model_copy(update={"version": VERSION}).to_yaml(
+        version_root / "specification.yaml"
+    )
+    DEGURBA_L2.to_yaml(version_root / "scheme.yaml")
+    codes = np.full(TINY.shape, scheme.WATER, dtype=np.uint8)
+    centres = np.zeros(TINY.shape, dtype=np.int32)
+    for cell in (NW, NE, SE):
+        codes[cell] = scheme.URBAN_CENTRE
+        centres[cell] = 1
+    codes[SW] = scheme.RURAL_CLUSTER
+    for tp in TIME_POINTS:
+        write_raster(data.class_raster_path(VERSION, tp), codes, scheme.NODATA)
+        write_raster(data.urban_centre_raster_path(VERSION, tp), centres, 0)
+
+
+@pytest.fixture
+def classified(table_world: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    population.run(spec(), UrbanicityData(table_world), SHAPES, None)
+    write_classification(table_world)
+    # The pixel check's blocks, on the small frame.
+    monkeypatch.setattr(classes, "CHECK_BLOCKS", ("B-0000X-0000Y", "B-0002X-0001Y"))
+    return table_world
+
+
+def test_people_by_unit_and_class(classified: Path) -> None:
+    manifest_path = classes.run(UrbanicityData(classified), VERSION, SHAPES)
+    out_dir = manifest_path.parent
+    by_class = pd.read_parquet(out_dir / "2020q1.parquet")
+    assert {
+        (int(r.location_id), int(r.class_code)): r.population
+        for r in by_class.itertuples()
+    } == {(0, 30): 1, (11, 13): 15, (11, 30): 6, (12, 30): 14, (21, 30): 34}
+
+    manifest = yaml.safe_load(manifest_path.read_text())
+    assert manifest["pixel_check"]["worst_relative_gap"] == 0
+    assert manifest["time_points"]["2020q1"]["people_in_no_unit"] == 1
+    assert manifest["time_points"]["2023q1"]["people"] == 70 + 99
+
+
+def test_stage_2_classes_each_unit(classified: Path) -> None:
+    out_dir = classes.run(UrbanicityData(classified), VERSION, SHAPES).parent
+    units = pd.read_parquet(out_dir / "stage2_2020q1.parquet").set_index(
+        ["level", "location_id"]
+    )
+    # Unit 11: 6 of its 21 people in the urban centre and 15 in a rural cluster.
+    assert units.loc[("admin2", 11), "stage2"] == "rural"
+    assert units.loc[("admin2", 11), "urban_centre_share"] == pytest.approx(6 / 21)
+    assert units.loc[("admin2", 12), "stage2"] == "city"
+    # Admin 1 1001 has units 11 and 12: 20 of 35 in the urban centre.
+    assert units.loc[("admin1", 1001), "stage2"] == "city"
+    assert units.loc[("country", 200), "population"] == 34
+    assert set(units.index.get_level_values("level")) == {"admin2", "admin1", "country"}
+
+
+def test_each_cluster_has_a_main_country_and_admin_1(classified: Path) -> None:
+    out_dir = classes.run(UrbanicityData(classified), VERSION, SHAPES).parent
+    units = pd.read_parquet(out_dir / "cluster_units_2020q1.parquet").set_index(
+        ["cluster_type", "cluster_id"]
+    )
+    centre = units.loc[("urban_centre", 1)]
+    # 34 of its 55 people are in country 200, and one is in no unit.
+    assert centre["population"] == 55
+    assert centre["country_id"] == 200
+    assert centre["iso3"] == "BBB"
+    assert centre["country_share"] == pytest.approx(34 / 55)
+    assert centre["admin1_id"] == 2001
+    rural = units.loc[("rural_cluster", 1)]
+    assert rural[["population", "country_id", "country_share"]].tolist() == [15, 100, 1]
+    people = pd.read_parquet(out_dir / "cluster_people_2020q1.parquet")
+    centre_people = people[people.cluster_type == "urban_centre"]
+    assert dict(
+        zip(centre_people.location_id, centre_people.population, strict=True)
+    ) == {
+        0: 1,
+        11: 6,
+        12: 14,
+        21: 34,
+    }
+
+
+def test_a_join_must_agree_with_the_pixels(
+    classified: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = pixel_view.pixel_classes
+
+    def shifted(*args: Any) -> npt.NDArray[np.uint8]:
+        codes = real(*args)
+        codes[0, 0] = scheme.WATER  # one pixel given the wrong class
+        return codes
+
+    monkeypatch.setattr(pixel_view, "pixel_classes", shifted)
+    with pytest.raises(RuntimeError, match="disagree"):
+        classes.run(UrbanicityData(classified), VERSION, SHAPES)
+
+
+def test_the_pixel_view_gives_each_pixel_its_cells_class(classified: Path) -> None:
+    data = UrbanicityData(classified)
+    path = data.class_raster_path(VERSION, "2020q1")
+    codes = pixel_view.pixel_classes(Block(0, 0), TINY, path, scheme.NODATA)
+    # Block (0, 0): columns 0-2 west of the meridian, rows 0-1 north of the equator.
+    assert codes.tolist() == [
+        [30, 30, 30, 30],
+        [30, 30, 30, 30],
+        [13, 13, 13, 30],
+        [13, 13, 13, 30],
+    ]
+    # A class raster covering only part of the grid leaves the rest as nodata.
+    with rasterio.open(path) as src:
+        part = src.read(1, window=rasterio.windows.Window(6, 0, 6, 12))
+        profile = src.profile | {
+            "width": 6,
+            "transform": rasterio.windows.transform(
+                rasterio.windows.Window(6, 0, 6, 12), src.transform
+            ),
+        }
+    east = classified / "east.tif"
+    with rasterio.open(east, "w", **profile) as dst:
+        dst.write(part, 1)
+    codes = pixel_view.pixel_classes(Block(0, 0), TINY, east, scheme.NODATA)
+    assert (codes[:, :3] == scheme.NODATA).all()
+    assert (codes[:, 3] == scheme.URBAN_CENTRE).all()
+    assert (
+        pixel_view.pixel_classes(Block(0, 0), TINY, east, scheme.NODATA).dtype
+        == np.uint8
+    )
+
+
+def test_only_populace_classifications_are_tabulated(classified: Path) -> None:
+    root = UrbanicityData(classified).classification_root(VERSION)
+    ghs = ClassificationSpecification.from_yaml(
+        Path("specifications/ghs_smod_r2023a_v2_reproduction.yaml")
+    )
+    ghs.to_yaml(root / "specification.yaml")
+    with pytest.raises(TypeError, match="population table"):
+        classes.run(UrbanicityData(classified), VERSION, SHAPES)
+
+
+def test_a_scheme_without_levels_has_no_stage_2() -> None:
+    plain = DEGURBA_L2.model_copy(update={"groups": {}})
+    by_class = pd.DataFrame(
+        {"location_id": [11], "class_code": [30], "population": [1.0]}
+    )
+    assert classes.stage2(by_class, plain, pd.DataFrame()) is None
+
+
+def test_the_classes_command(classified: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The command's choices are fixed when it is defined, so the test's units
+    # stand in for a registered shapes version, with their rasters and table.
+    monkeypatch.setitem(admin.SHAPES, "lsae_1578_a2", admin.SHAPES[SHAPES])
+    data = UrbanicityData(classified)
+    for block in blocks.all_blocks():
+        target = data.admin_block_path("lsae_1578_a2", block.key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data.admin_block_path(SHAPES, block.key).read_bytes())
+    population.run(spec(), data, "lsae_1578_a2", None)
+    result = CliRunner().invoke(
+        purun,
+        [
+            "tabulate",
+            "classes",
+            VERSION,
+            "--shapes",
+            "lsae_1578_a2",
+            "-o",
+            str(classified),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("Done: ")
