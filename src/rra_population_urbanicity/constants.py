@@ -8,6 +8,12 @@ URBANICITY_ROOT = RRA_ROOT / "pub" / "population-urbanicity"
 # The outputs of rra-population-model and rra-building-density, read as inputs.
 POPULATION_MODEL_ROOT = RRA_ROOT / "pub" / "population-model"
 BUILDING_DENSITY_ROOT = RRA_ROOT / "pub" / "building-density"
+# RT's urban and rural poverty rates by LSAE 1578 admin 2 (2020-2023): the
+# deliverable flags the units they have no row for.
+RT_RATES_PATH = Path(
+    "/mnt/share/geospatial/lsae/economic_indicators/ldi/output/20251022_090128/"
+    "raked_admin2_urban_rural_poverty.csv"
+)
 
 CRSES = {
     # World Mollweide: the GHSL grid, and the default grid for classification.

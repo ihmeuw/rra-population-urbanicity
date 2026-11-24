@@ -487,3 +487,60 @@ def test_the_classes_command(classified: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     assert result.exit_code == 0, result.output
     assert result.output.startswith("Done: ")
+
+
+def test_the_rt_deliverable(
+    classified: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The test's units stand in for LSAE 1578's admin 2 units, with a fourth
+    # where nobody lives; RT has rates for units 11 and 12 only.
+    data = UrbanicityData(classified)
+    monkeypatch.setitem(admin.SHAPES, "lsae_1578_a2", admin.SHAPES[SHAPES])
+    hierarchy_path = admin.SHAPES[SHAPES].hierarchy_path
+    hierarchy = pd.read_parquet(hierarchy_path)
+    hierarchy["most_detailed"] = hierarchy["location_id"].isin([11, 12, 21]).astype(int)
+    hierarchy["location_name"] = hierarchy["ihme_loc_id"]
+    empty = {
+        "location_id": 22,
+        "path_to_top_parent": "1,200,2001,22",
+        "ihme_loc_id": "BBB_22",
+        "most_detailed": 1,
+        "location_name": "BBB_22",
+    }
+    pd.concat([hierarchy, pd.DataFrame([empty])]).to_parquet(hierarchy_path)
+    rates = tmp_path / "rates.csv"
+    pd.DataFrame({"year_id": [2020, 2020], "location_id": [11, 12]}).to_csv(
+        rates, index=False
+    )
+    monkeypatch.setattr(puc, "RT_RATES_PATH", rates)
+    for block in blocks.all_blocks():
+        target = data.admin_block_path("lsae_1578_a2", block.key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data.admin_block_path(SHAPES, block.key).read_bytes())
+    population.run(spec(), data, "lsae_1578_a2", None)
+    classes.run(data, VERSION, "lsae_1578_a2")
+
+    result = CliRunner().invoke(
+        purun, ["tabulate", "deliverable", VERSION, "-o", str(classified)]
+    )
+    assert result.exit_code == 0, result.output
+    table = pd.read_parquet(
+        data.classification_root(VERSION)
+        / "deliverables"
+        / "admin2_urban_rural_lsae_1578.parquet"
+    )
+    first = table[table.time_point == "2020q1"].set_index("location_id")
+    assert first.loc[
+        11, ["population", "urban_population", "rural_population"]
+    ].tolist() == [21, 6, 15]
+    assert first.loc[11, "urban_share"] == pytest.approx(6 / 21)
+    assert first.loc[21, "urban_share"] == 1
+    assert first.loc[22, "population"] == 0
+    assert pd.isna(first.loc[22, "urban_share"])
+    assert first["has_rt_rates"].to_dict() == {11: True, 12: True, 21: False, 22: False}
+    assert len(table) == 4 * len(TIME_POINTS)
+    assert (
+        data.classification_root(VERSION)
+        / "deliverables"
+        / "admin2_urban_rural_lsae_1578.csv"
+    ).exists()
