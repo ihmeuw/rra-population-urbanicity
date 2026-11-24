@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import click
-import geopandas as gpd
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -59,9 +58,7 @@ class Shapes:
 
 
 def load_shapes(name: str) -> Shapes:
-    frame = gpd.read_parquet(
-        admin.shapes_path(name), columns=["location_id", "geometry"]
-    ).to_crs(MODEL_CRS)
+    frame = admin.read_shapes(name, MODEL_CRS)
     geometry = frame.geometry.to_numpy()
     return Shapes(
         geometry, frame["location_id"].to_numpy(np.int64), shapely.STRtree(geometry)

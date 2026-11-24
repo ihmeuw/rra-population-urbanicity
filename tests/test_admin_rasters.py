@@ -175,3 +175,27 @@ def test_the_command_rasterizes_once(
     assert result.output.strip() == "Already made."
     root = admin_world / "admin-rasters" / "40m" / "lsae_1578_a2"
     assert (root / "coverage.csv").exists()
+
+
+def test_shapes_a_hair_past_the_antimeridian_stay_on_their_side(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # As in some of LSAE 1578's shapes in Fiji and Chukotka: a vertex at
+    # 180.0000001°, which a projection would wrap to the far west.
+    monkeypatch.setattr(puc, "POPULATION_MODEL_ROOT", tmp_path)
+    past = shapely.Polygon([(179, 0), (180.0000001, 0), (180.0000001, 1), (179, 1)])
+    path = admin.shapes_path("edge")
+    path.parent.mkdir(parents=True)
+    gpd.GeoDataFrame({"location_id": [1]}, geometry=[past], crs="EPSG:4326").to_parquet(
+        path
+    )
+
+    west, _, east, _ = admin.read_shapes("edge", MODEL_CRS).total_bounds
+    assert west > 19_900_000  # 179° east, not near -20,037,508
+    assert east == pytest.approx(admin_rasters.WORLD_X_MAX)
+
+    gpd.GeoDataFrame({"location_id": [1]}, geometry=[past], crs=MODEL_CRS).to_parquet(
+        path
+    )
+    with pytest.raises(ValueError, match="not in longitude and latitude"):
+        admin.read_shapes("edge", MODEL_CRS)

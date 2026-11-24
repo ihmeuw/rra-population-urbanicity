@@ -17,6 +17,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import rasterio
+import shapely
 from rasterio import features
 from rra_tools.shell_tools import mkdir
 
@@ -28,6 +29,9 @@ type LocationArray = npt.NDArray[np.int32]
 
 # No unit: the cell's centre is in no shape.
 NO_UNIT = 0
+# The world in longitude and latitude.
+WORLD_MIN = np.array([-180.0, -90.0])
+WORLD_MAX = np.array([180.0, 90.0])
 # Tiles of the raster, in cells.
 BLOCK_SIZE = 512
 
@@ -83,11 +87,33 @@ def unit_parents(version: ShapesVersion) -> pd.DataFrame:
     )
 
 
+def read_shapes(shapes: str, crs: str) -> gpd.GeoDataFrame:
+    """A shapes version's `location_id` and geometry, projected to `crs`.
+
+    Some shapes have vertices a hair past ±180° of longitude. A projection
+    would wrap each one to the other side of the world, and the edges to it
+    would cross the world, so a unit would be drawn across every country in
+    its band of latitude. Coordinates are clamped to the world's bounds first,
+    which moves those vertices by far less than a metre.
+    """
+    frame = gpd.read_parquet(shapes_path(shapes), columns=["location_id", "geometry"])
+    if frame.crs is None or not frame.crs.is_geographic:
+        msg = f"The {shapes} shapes are not in longitude and latitude."
+        raise ValueError(msg)
+    clamped = shapely.transform(
+        frame.geometry.to_numpy(), lambda xy: np.clip(xy, WORLD_MIN, WORLD_MAX)
+    )
+    frame = frame.set_geometry(gpd.GeoSeries(clamped, index=frame.index, crs=frame.crs))
+    return frame.to_crs(crs)
+
+
 def rasterize(shapes: gpd.GeoDataFrame, grid: GridDefinition) -> LocationArray:
-    """Each cell's location_id, from the shape containing its centre."""
-    projected = shapes.to_crs(grid.crs)
+    """Each cell's location_id, from the shape containing its centre.
+
+    The shapes are in the grid's CRS.
+    """
     values: LocationArray = features.rasterize(
-        zip(projected.geometry, projected.location_id.astype(int), strict=True),
+        zip(shapes.geometry, shapes.location_id.astype(int), strict=True),
         out_shape=grid.shape,
         transform=grid.transform,
         fill=NO_UNIT,
@@ -102,7 +128,7 @@ def location_raster(
     """Each cell's location_id under a shapes version, made once and kept."""
     path = data.admin_raster_path(grid.name, shapes)
     if not path.exists():
-        values = rasterize(gpd.read_parquet(shapes_path(shapes)), grid)
+        values = rasterize(read_shapes(shapes, grid.crs), grid)
         mkdir(path.parent, parents=True, exist_ok=True)
         partial = path.with_name(f"{path.stem}.part.tif")
         with rasterio.open(
