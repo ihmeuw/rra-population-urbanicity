@@ -3,6 +3,8 @@
 reference/<provider>/<product>/<release>/
     External inputs as downloaded. Read-only once downloaded: a new release
     goes in a new directory.
+grids/<grid>/population_by_admin/<source>/<version components...>/<shapes>/<time point>.parquet
+    People by grid cell and admin unit: row, col, location_id, population.
 grids/<grid>/<layer>/<source>/<version components...>/<time point>.tif
     Input layers on a classification grid, shared by every classification
     that uses the same source version. Layers that do not vary in time use
@@ -70,6 +72,19 @@ class UrbanicityData:
 
     def admin_block_path(self, shapes: str, block_key: str) -> Path:
         return self.admin_block_root(shapes) / f"{block_key}.tif"
+
+    def population_by_admin_root(
+        self, grid: str, source: GridSource, shapes: str
+    ) -> Path:
+        return (
+            self.root
+            / "grids"
+            / grid
+            / "population_by_admin"
+            / source.source
+            / Path(*source.version_components)
+            / shapes
+        )
 
     def grid_path(
         self, grid: str, layer: Layer, source: GridSource, time_point: str
