@@ -10,6 +10,8 @@ grids/<grid>/<layer>/<source>/<version components...>/<time point>.tif
 admin-rasters/<grid>/<shapes>.tif
     Each cell's administrative unit (location_id) under a shapes version,
     such as lsae_1578_a0, from the shape containing the cell's centre.
+admin-rasters/40m/<shapes>/<block key>.tif
+    The same for each pixel of a block of the 40 m model grid.
 classifications/<version>/
     One run of a classification specification: the saved specification,
     the class scheme, a manifest of what the run resolved, and per time point
@@ -62,6 +64,12 @@ class UrbanicityData:
 
     def admin_raster_path(self, grid: str, shapes: str) -> Path:
         return self.root / "admin-rasters" / grid / f"{shapes}.tif"
+
+    def admin_block_root(self, shapes: str) -> Path:
+        return self.root / "admin-rasters" / "40m" / shapes
+
+    def admin_block_path(self, shapes: str, block_key: str) -> Path:
+        return self.admin_block_root(shapes) / f"{block_key}.tif"
 
     def grid_path(
         self, grid: str, layer: Layer, source: GridSource, time_point: str
