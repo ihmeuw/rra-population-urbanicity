@@ -29,9 +29,22 @@ def pixel_classes(
     rows = rows_on_grid(block, grid)
     height, width = rows.stop - rows.start, block.shape[1]
     transform = block.transform @ Affine.translation(0, rows.start)
+    codes[rows] = window_classes(transform, (height, width), grid, class_path, nodata)
+    return codes
+
+
+def window_classes(
+    transform: Affine,
+    shape: tuple[int, int],
+    grid: GridDefinition,
+    class_path: Path,
+    nodata: int,
+) -> CodeArray:
+    """The class of each pixel of a window of the model grid on the grid."""
     cell_row, cell_col = grid.cell_index(
-        *pixel_centres_in(transform, (height, width), MODEL_CRS, grid.crs)
+        *pixel_centres_in(transform, shape, MODEL_CRS, grid.crs)
     )
+    codes = np.full(shape, nodata, dtype=np.uint8)
     with rasterio.open(class_path) as src:
         row_off = round((grid.y_max - src.transform.f) / grid.cell_size)
         col_off = round((src.transform.c - grid.x_min) / grid.cell_size)
@@ -45,7 +58,5 @@ def pixel_classes(
         if inside.any():
             first, last = int(local_row[inside].min()), int(local_row[inside].max())
             stored = src.read(1, window=Window(0, first, src.width, last - first + 1))
-            on_grid = np.full((height, width), nodata, dtype=np.uint8)
-            on_grid[inside] = stored[local_row[inside] - first, local_col[inside]]
-            codes[rows] = on_grid
+            codes[inside] = stored[local_row[inside] - first, local_col[inside]]
     return codes

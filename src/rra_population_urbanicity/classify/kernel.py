@@ -38,6 +38,9 @@ from rra_tools.shell_tools import mkdir
 
 from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.classifiers.kernel_density import rules
+from rra_population_urbanicity.classifiers.kernel_density.parameters import (
+    KernelDensityParameters,
+)
 from rra_population_urbanicity.classifiers.kernel_density.scheme import BINARY
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import pixel_centres_in
@@ -65,22 +68,27 @@ TOLERANCE = 1e-9
 type FloatArray = npt.NDArray[np.float32]
 
 
-def block_latitude(block: Block) -> float:
-    """The latitude of a block's middle row, from y on the equal-area grid."""
-    _, y = block.transform @ (0, block.shape[0] / 2)
+def latitude(window: Window) -> float:
+    """The latitude of a window's middle row, from y on the equal-area grid."""
+    _, y = blocks.MODEL_TRANSFORM @ (0, window.row_off + window.height / 2)
     return math.degrees(math.asin(y / EARTH_RADIUS_M))
 
 
-def margin_window(block: Block, kernel: FloatArray) -> Window:
-    """The block's window on the model grid, widened by half the kernel."""
+def margin_window(window: Window, kernel: FloatArray) -> Window:
+    """A window of the model grid, widened by half the kernel."""
     rows, cols = kernel.shape[0] // 2, kernel.shape[1] // 2
-    window = block.window
     return Window(
         window.col_off - cols,
         window.row_off - rows,
         window.width + 2 * cols,
         window.height + 2 * rows,
     )
+
+
+def inner(kernel: FloatArray, shape: tuple[int, int]) -> tuple[slice, slice]:
+    """Where a window sits in its widened window."""
+    rows, cols = kernel.shape[0] // 2, kernel.shape[1] // 2
+    return slice(rows, rows + shape[0]), slice(cols, cols + shape[1])
 
 
 def read_population(
@@ -149,13 +157,10 @@ def run_block(data: UrbanicityData, version: str, block_key: str) -> Path:
     block = Block.from_key(block_key)
     params = spec.method.parameters
     kernel = rules.disc_kernel(
-        params.radius_m, blocks.PIXEL_SIZE, block_latitude(block)
+        params.radius_m, blocks.PIXEL_SIZE, latitude(block.window)
     )
-    window = margin_window(block, kernel)
-    inner = (
-        slice(kernel.shape[0] // 2, kernel.shape[0] // 2 + block.shape[0]),
-        slice(kernel.shape[1] // 2, kernel.shape[1] // 2 + block.shape[1]),
-    )
+    window = margin_window(block.window, kernel)
+    in_block = inner(kernel, block.shape)
     land: FloatArray | None = None
     units: dict[str, npt.NDArray[np.int64]] = {}
     tables = []
@@ -164,7 +169,7 @@ def run_block(data: UrbanicityData, version: str, block_key: str) -> Path:
         people, has_data = read_population(
             spec.population, time_point, window, puc.POPULATION_MODEL_ROOT
         )
-        block_people = people[inner]
+        block_people = people[in_block]
         totals[time_point] = float(block_people.sum(dtype=np.float64))
         if totals[time_point] == 0:
             continue
@@ -175,7 +180,7 @@ def run_block(data: UrbanicityData, version: str, block_key: str) -> Path:
             people, land, has_data, kernel, params, PIXEL_AREA_KM2
         )
         for shapes, block_units in units.items():
-            table = tabulate(block_units, codes[inner], block_people)
+            table = tabulate(block_units, codes[in_block], block_people)
             tables.append(table.assign(shapes=shapes, time_point=time_point))
     columns = ["shapes", "time_point", "location_id", "class_code", "population"]
     result = (
@@ -186,6 +191,25 @@ def run_block(data: UrbanicityData, version: str, block_key: str) -> Path:
     result.to_parquet(path, index=False)
     (path.with_suffix(".yaml")).write_text(yaml.safe_dump(totals))
     return path
+
+
+def classify_window(
+    data: UrbanicityData,
+    params: KernelDensityParameters,
+    source: PopulaceSource,
+    window: Window,
+    time_point: str,
+) -> tuple[npt.NDArray[np.uint8], FloatArray]:
+    """The classes and people of a window of the model grid at a time point."""
+    kernel = rules.disc_kernel(params.radius_m, blocks.PIXEL_SIZE, latitude(window))
+    widened = margin_window(window, kernel)
+    people, has_data = read_population(
+        source, time_point, widened, puc.POPULATION_MODEL_ROOT
+    )
+    land = read_land(data, widened)
+    codes, _ = rules.classify(people, land, has_data, kernel, params, PIXEL_AREA_KM2)
+    where = inner(kernel, (int(window.height), int(window.width)))
+    return codes[where], people[where]
 
 
 def block_path(root: Path, block_key: str) -> Path:

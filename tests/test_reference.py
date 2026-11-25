@@ -246,20 +246,25 @@ def test_wup_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_us_census_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, Path, str]] = []
+    fetched: list[str] = []
 
     def download_archive(url: str, out_dir: Path, expected: str) -> Path:
         calls.append((url, out_dir, expected))
         return out_dir / expected
 
+    def fetch(url: str, path: Path) -> None:
+        fetched.append(url)
+        path.write_text("table")
+
     monkeypatch.setattr(us_census, "download_archive", download_archive)
-    result = CliRunner().invoke(
-        purun, ["reference", "us-census", "--output-dir", str(tmp_path)]
-    )
-    assert result.exit_code == 0, result.output
-    assert calls == [
-        (
-            us_census.URBAN_AREAS_URL,
-            tmp_path / "reference" / "us_census" / "urban_areas" / "2020",
-            us_census.URBAN_AREAS_FILE,
+    monkeypatch.setattr(us_census, "fetch", fetch)
+    # The county table is fetched once; the shapes are left to download_archive.
+    for _ in range(2):
+        result = CliRunner().invoke(
+            purun, ["reference", "us-census", "--output-dir", str(tmp_path)]
         )
-    ]
+        assert result.exit_code == 0, result.output
+    out_dir = tmp_path / "reference" / "us_census" / "urban_areas" / "2020"
+    assert calls[0] == (us_census.URBAN_AREAS_URL, out_dir, us_census.URBAN_AREAS_FILE)
+    assert fetched == [us_census.COUNTY_TABLE_URL]
+    assert (out_dir / "2020_UA_COUNTY.xlsx").read_text() == "table"

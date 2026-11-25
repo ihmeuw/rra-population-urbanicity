@@ -214,8 +214,8 @@ def test_a_block_task_needs_a_kernel_run(
 
 def test_a_blocks_latitude_and_margin() -> None:
     block = blocks.Block(91, 11)
-    assert kernel.block_latitude(block) == pytest.approx(24.0, abs=0.1)
-    window = kernel.margin_window(block, np.ones((45, 55), dtype=np.float32))
+    assert kernel.latitude(block.window) == pytest.approx(24.0, abs=0.1)
+    window = kernel.margin_window(block.window, np.ones((45, 55), dtype=np.float32))
     assert (window.col_off, window.row_off) == (91 * 8192 - 27, 11 * 8192 - 22)
     assert (window.width, window.height) == (8192 + 54, 8192 + 44)
 
