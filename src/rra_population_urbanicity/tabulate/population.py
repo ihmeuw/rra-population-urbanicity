@@ -65,7 +65,7 @@ LOCATION_MASK = (1 << LOCATION_BITS) - 1
 GRID_TOLERANCE = 1e-6
 # Summed over cells, each unit must keep its pixels' people to within this share.
 UNIT_TOLERANCE = 1e-9
-CONCURRENCY_LIMIT = 200
+CONCURRENCY_LIMIT = 400
 # The units Populace is raked to, whose populations the countries are compared with.
 RAKING_SHAPES = "raking_gbd_2023"
 # How close countries come to GBD's population, for the report.
