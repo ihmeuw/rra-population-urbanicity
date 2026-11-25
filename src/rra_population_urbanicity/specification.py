@@ -58,6 +58,13 @@ class GhsPopSource(_GhslSource):
     release: Literal["r2023a"]
 
 
+class GhsWupPopSource(_GhslSource):
+    """GHS-WUP-POP: the population grid behind WUP 2025's Degree of Urbanisation."""
+
+    source: Literal["ghs_wup_pop"]
+    release: Literal["r2025a"]
+
+
 class GhsLandSource(_GhslSource):
     """GHS-LAND: the share of each cell that is permanent land."""
 
@@ -97,6 +104,13 @@ class GhsBuiltSSource(_GhslSource):
     release: Literal["r2023a"]
 
 
+class GhsWupBuiltSSource(_GhslSource):
+    """GHS-WUP-BUILT-S: the built-up grid released with GHS-WUP-POP."""
+
+    source: Literal["ghs_wup_built_s"]
+    release: Literal["r2025a"]
+
+
 class MicrosoftDensitySource(_Spec):
     """Building-footprint density from the Microsoft building predictions."""
 
@@ -110,14 +124,15 @@ class MicrosoftDensitySource(_Spec):
 
 
 PopulationSource = Annotated[
-    PopulaceSource | GhsPopSource, Field(discriminator="source")
+    PopulaceSource | GhsPopSource | GhsWupPopSource, Field(discriminator="source")
 ]
 LandSource = Annotated[
     GhsLandSource | MicrosoftWaterSource | GhsLandOrMicrosoftWaterSource,
     Field(discriminator="source"),
 ]
 BuiltSource = Annotated[
-    GhsBuiltSSource | MicrosoftDensitySource, Field(discriminator="source")
+    GhsBuiltSSource | GhsWupBuiltSSource | MicrosoftDensitySource,
+    Field(discriminator="source"),
 ]
 
 

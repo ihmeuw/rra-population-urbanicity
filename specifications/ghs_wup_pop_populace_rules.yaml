@@ -1,0 +1,21 @@
+# GHS-WUP-POP, the population grid behind WUP 2025's Degree of Urbanisation
+# figures, classified with the rules Populace runs use. Comparing it with a
+# Populace run separates the population surface from the rules, as WUP 2025's
+# own figures cannot. GHS-WUP-DEGURBA was made from the same grid and GHS-LAND,
+# with the built-up criterion off as here, so comparing the two shows what is
+# left of the rules: GHSL split clusters at national borders. The built-up
+# layer enters only through the density-on-land rule.
+population:
+  source: ghs_wup_pop
+  release: r2025a
+grid: moll_1km
+land:
+  source: ghs_land
+  release: r2022a
+built:
+  source: ghs_wup_built_s
+  release: r2025a
+time_points: [2020q1, 2025q1]
+method:
+  name: degurba_r2023a
+  parameter_set: populace_default

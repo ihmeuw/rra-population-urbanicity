@@ -6,18 +6,21 @@ import rasterio
 from affine import Affine
 
 from rra_population_urbanicity.data import UrbanicityData
-from rra_population_urbanicity.inputs import blocks
+from rra_population_urbanicity.inputs import blocks, grids
 from rra_population_urbanicity.inputs.blocks import MODEL_CRS, Block
 from rra_population_urbanicity.inputs.providers import ghsl, microsoft, populace
+from rra_population_urbanicity.reference.ghsl import GhslRaster
 from rra_population_urbanicity.specification import (
     GhsBuiltSSource,
     GhsLandSource,
     GhsPopSource,
+    GhsWupBuiltSSource,
+    GhsWupPopSource,
     MicrosoftDensitySource,
     MicrosoftWaterSource,
     PopulaceSource,
 )
-from tests.conftest import TINY, write_model_raster
+from tests.conftest import TINY, write_ghsl, write_model_raster
 
 
 def test_ghsl_layers_are_read_in_people_and_shares(ghsl_world: Path) -> None:
@@ -43,6 +46,47 @@ def test_ghsl_layers_are_read_in_people_and_shares(ghsl_world: Path) -> None:
     assert land[0, 11] == 0.0  # a missing cell reads as water
     assert built[2, 2] == pytest.approx(0.6)
     assert built.dtype == np.float64
+
+
+def test_ghs_wup_layers_are_read_in_people_and_shares(ghsl_world: Path) -> None:
+    population = np.zeros(TINY.shape)
+    population[1, 1] = 1234.5
+    population[0, 0] = -200
+    built = np.zeros(TINY.shape, dtype=np.float32)
+    built[1, 1] = 0.25  # km² of the 1 km² cell
+    built[0, 0] = -200
+    write_ghsl(
+        ghsl_world,
+        GhslRaster(product="WUP_POP", release="R2025A", epoch=2025),
+        population,
+        -200,
+    )
+    write_ghsl(
+        ghsl_world,
+        GhslRaster(product="WUP_BUILT_S", release="R2025A", epoch=2025),
+        built,
+        -200,
+    )
+    data, window = UrbanicityData(ghsl_world), TINY.full_window
+    people = grids.load(
+        data,
+        "population",
+        GhsWupPopSource(source="ghs_wup_pop", release="r2025a"),
+        TINY,
+        "2025q1",
+        window,
+    )
+    share = grids.load(
+        data,
+        "built",
+        GhsWupBuiltSSource(source="ghs_wup_built_s", release="r2025a"),
+        TINY,
+        "2025q1",
+        window,
+    )
+    assert people.sum() == pytest.approx(1234.5)
+    assert share[1, 1] == pytest.approx(0.25)
+    assert share[0, 0] == 0.0
 
 
 @pytest.mark.parametrize("time_point", ["2021q1", "2020q2"])

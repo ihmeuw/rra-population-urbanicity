@@ -99,3 +99,9 @@ def test_the_v1_reference_path(tmp_path: Path) -> None:
     path = validation.smod_path(UrbanicityData(tmp_path), "r2023a_v1", "2025q1")
     assert path.parent.name == "r2023a_v1"
     assert path.name == "GHS_SMOD_E2025_GLOBE_R2023A_54009_1000_V1_0.tif"
+
+
+def test_the_wup_reference_path(tmp_path: Path) -> None:
+    path = validation.smod_path(UrbanicityData(tmp_path), "wup_r2025a", "2020q1")
+    assert path.parent.parent.name == "ghs_wup_degurba"
+    assert path.name == "GHS_WUP_DEGURBA_E2020_GLOBE_R2025A_54009_1000_V1_0.tif"

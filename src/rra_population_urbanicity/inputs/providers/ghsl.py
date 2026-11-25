@@ -1,9 +1,10 @@
 """GHSL input layers, read from the reference downloads.
 
 The GHSL rasters are already on `moll_1km`, so they are read as they are, not
-aggregated. Population is in people per cell; land and built-up, published as
-m² per cell, are converted to shares of the cell. Missing values are read the
-way GHS-SMOD reads them: no people, no built-up, and no land (water).
+aggregated. Population is in people per cell; land and built-up are converted
+to shares of the cell from what GHSL publishes, which is m² per cell, except
+GHS-WUP-BUILT-S's km² per cell. Missing values are read the way GHS-SMOD reads
+them: no people, no built-up, and no land (water).
 """
 
 from pathlib import Path
@@ -25,6 +26,8 @@ from rra_population_urbanicity.specification import (
     GhsLandOrMicrosoftWaterSource,
     GhsLandSource,
     GhsPopSource,
+    GhsWupBuiltSSource,
+    GhsWupPopSource,
     MicrosoftDensitySource,
     MicrosoftWaterSource,
     PopulaceSource,
@@ -36,10 +39,12 @@ type IntArray = npt.NDArray[np.int32]
 type Source = (
     PopulaceSource
     | GhsPopSource
+    | GhsWupPopSource
     | GhsLandSource
     | MicrosoftWaterSource
     | GhsLandOrMicrosoftWaterSource
     | GhsBuiltSSource
+    | GhsWupBuiltSSource
     | MicrosoftDensitySource
 )
 
@@ -68,6 +73,12 @@ def ghsl_raster(source: Source, time_point: str) -> GhslRaster:
         return GhslRaster(product="LAND", release="R2022A", epoch=GHS_LAND_EPOCH)
     if isinstance(source, GhsBuiltSSource):
         return GhslRaster(product="BUILT_S", release="R2023A", epoch=epoch(time_point))
+    if isinstance(source, GhsWupPopSource):
+        return GhslRaster(product="WUP_POP", release="R2025A", epoch=epoch(time_point))
+    if isinstance(source, GhsWupBuiltSSource):
+        return GhslRaster(
+            product="WUP_BUILT_S", release="R2025A", epoch=epoch(time_point)
+        )
     msg = f"There is no provider for {source.source} yet."
     raise NotImplementedError(msg)
 
@@ -88,8 +99,10 @@ def load(
         values: FloatArray = src.read(1, window=window).astype(np.float64, copy=False)
         nodata = src.nodata
     values[values == nodata] = 0.0
-    if raster.product != "POP":
+    if raster.product in ("LAND", "BUILT_S"):
         values /= grid.cell_size**2
+    elif raster.product == "WUP_BUILT_S":
+        values /= grid.cell_area_km2
     return values
 
 

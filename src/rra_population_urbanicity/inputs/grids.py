@@ -19,6 +19,16 @@ from rra_population_urbanicity.specification import (
     GhsBuiltSSource,
     GhsLandSource,
     GhsPopSource,
+    GhsWupBuiltSSource,
+    GhsWupPopSource,
+)
+
+GHSL_SOURCES = (
+    GhsPopSource,
+    GhsWupPopSource,
+    GhsLandSource,
+    GhsBuiltSSource,
+    GhsWupBuiltSSource,
 )
 
 
@@ -31,7 +41,7 @@ def load(
     window: Window,
 ) -> ghsl.FloatArray:
     """Read a window of an input layer at a time point."""
-    if isinstance(source, GhsPopSource | GhsLandSource | GhsBuiltSSource):
+    if isinstance(source, GHSL_SOURCES):
         return ghsl.load(data, source, grid, time_point, window)
     path = data.grid_path(
         grid.name, layer, source, puc.STATIC if layer == "land" else time_point

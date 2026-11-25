@@ -1,5 +1,9 @@
 """Compare a classification with GHS-SMOD, cell by cell.
 
+The reference is GHS-SMOD R2023A, V2.0 or V1.0, or GHS-WUP-DEGURBA R2025A:
+the classes behind WUP 2025, made by GHSL's rules on its own WUP population
+grid (`wup_r2025a`).
+
 For each time point it writes, under
 classifications/<version>/validation/ghs_smod_reproduction/<release>/:
 - summary.yaml: agreement over GHS-SMOD's cells with data, and over those
@@ -37,7 +41,7 @@ from rra_population_urbanicity.inputs.providers import ghsl
 from rra_population_urbanicity.reference.ghsl import GhslRaster, check_on_grid
 from rra_population_urbanicity.specification import ClassificationSpecification
 
-Release = Literal["r2023a_v2", "r2023a_v1"]
+Release = Literal["r2023a_v2", "r2023a_v1", "wup_r2025a"]
 SMOD_NODATA = -200
 STRIP_ROWS = 2048
 CODES = [c.code for c in DEGURBA_L2.classes]
@@ -48,12 +52,17 @@ SUBSETS = ("all", "populated_or_land")
 
 
 def smod_path(data: UrbanicityData, release: Release, time_point: str) -> Path:
-    raster = GhslRaster(
-        product="SMOD",
-        release="R2023A",
-        epoch=ghsl.epoch(time_point),
-        version=2 if release == "r2023a_v2" else 1,
-    )
+    if release == "wup_r2025a":
+        raster = GhslRaster(
+            product="WUP_DEGURBA", release="R2025A", epoch=ghsl.epoch(time_point)
+        )
+    else:
+        raster = GhslRaster(
+            product="SMOD",
+            release="R2023A",
+            epoch=ghsl.epoch(time_point),
+            version=2 if release == "r2023a_v2" else 1,
+        )
     root = data.reference_root("ghsl", raster.product_dir, raster.release_dir)
     return root / f"{raster.stem}.tif"
 
@@ -206,10 +215,10 @@ def validate(data: UrbanicityData, version: str, release: Release) -> dict[str, 
 @click.argument("version")
 @click.option(
     "--reference",
-    type=click.Choice(["r2023a_v2", "r2023a_v1"]),
+    type=click.Choice(["r2023a_v2", "r2023a_v1", "wup_r2025a"]),
     default="r2023a_v2",
     show_default=True,
-    help="The GHS-SMOD release to compare with.",
+    help="The GHS-SMOD release, or GHS-WUP-DEGURBA, to compare with.",
 )
 @with_output_directory(puc.URBANICITY_ROOT)
 def validate_ghs_smod(version: str, reference: Release, output_dir: str) -> None:

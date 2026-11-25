@@ -12,8 +12,9 @@ from click.testing import CliRunner
 
 from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.cli import purun
+from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GridDefinition
-from rra_population_urbanicity.reference import ghsl
+from rra_population_urbanicity.reference import download, ghsl, us_census, wup
 
 TEST_GRID = GridDefinition(
     name="test",
@@ -96,9 +97,20 @@ def test_raster_urls_and_directories() -> None:
     )
 
 
-def test_ten_distinct_rasters_are_downloaded() -> None:
-    # Nine for the reproduction, and GHS-LAND at 100 m.
-    assert len({raster.stem for raster in ghsl.GHSL_RASTERS}) == 10
+def test_wup_rasters() -> None:
+    raster = ghsl.GhslRaster(product="WUP_DEGURBA", release="R2025A", epoch=2025)
+    assert raster.url == (
+        "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL"
+        "/GHS_WUP_DEGURBA_GLOBE_R2025A/GHS_WUP_DEGURBA_E2025_GLOBE_R2025A_54009_1000"
+        "/V1-0/GHS_WUP_DEGURBA_E2025_GLOBE_R2025A_54009_1000_V1_0.zip"
+    )
+    assert (raster.product_dir, raster.release_dir) == ("ghs_wup_degurba", "r2025a")
+
+
+def test_sixteen_distinct_rasters_are_downloaded() -> None:
+    # Nine for the reproduction, GHS-LAND at 100 m, and GHS-WUP's population,
+    # built-up and classes for two epochs.
+    assert len({raster.stem for raster in ghsl.GHSL_RASTERS}) == 16
 
 
 def test_download_raster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,6 +126,22 @@ def test_download_raster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     # A raster already on disk is not downloaded again.
     ghsl.download_raster(POP_2020, out_dir, TEST_GRID)
     assert server.urls == [POP_2020.url]
+
+
+def test_an_archive_must_hold_the_expected_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("readme.txt", "hello")
+    server = FakeServer(archive.getvalue())
+    monkeypatch.setattr(requests, "get", server.get)
+    url = "https://example.org/files/thing.zip"
+
+    assert download.download_archive(url, tmp_path, "readme.txt").read_text() == "hello"
+    assert [p.name for p in tmp_path.iterdir()] == ["readme.txt"]
+    with pytest.raises(FileNotFoundError, match="did not hold thing.gpkg"):
+        download.download_archive(url, tmp_path / "other", "thing.gpkg")
 
 
 def test_rasters_off_the_grid_are_rejected(
@@ -154,19 +182,84 @@ def test_ghsl_command_downloads_everything(
         downloads.append(out_dir)
         return out_dir
 
+    def download_archive(url: str, out_dir: Path, expected: str) -> Path:
+        downloads.append(out_dir / expected)
+        return out_dir
+
     monkeypatch.setattr(ghsl, "download_raster", download_raster)
     monkeypatch.setattr(ghsl, "download_data_package", download_data_package)
+    monkeypatch.setattr(ghsl, "download_archive", download_archive)
     result = CliRunner().invoke(
         purun, ["reference", "ghsl", "--output-dir", str(tmp_path)]
     )
 
     assert result.exit_code == 0, result.output
     reference = tmp_path / "reference" / "ghsl"
-    assert len(downloads) == 11
+    assert len(downloads) == 19
     assert reference / "ghs_smod" / "r2023a_v2" / SMOD_2025_V2.stem in downloads
     # GHS-LAND comes at 100 m too, checked against GHSL's 100 m grid.
     land_100m = "GHS_LAND_E2018_GLOBE_R2022A_54009_100_V1_0"
     assert reference / "ghs_land" / "r2022a" / land_100m in downloads
     assert grids[land_100m] == ghsl.MOLL_100M
     assert grids[SMOD_2025_V2.stem].name == "moll_1km"
+    assert downloads[17] == (
+        reference
+        / "ghs_wup_mtuc"
+        / "r2025a_v1_1"
+        / "GHS_WUP_MTUC_MT_GLOBE_R2025A_v1_1.shp"
+    )
     assert downloads[-1] == reference / "data_package" / ghsl.DATA_PACKAGE_RELEASE
+
+
+def test_wup_tables_are_copied_once(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    for name in wup.FILES.values():
+        (source / name).write_text(name)
+    data = UrbanicityData(tmp_path / "out")
+
+    paths = wup.copy_tables(data, source)
+    assert [p.read_text() for p in paths] == list(wup.FILES.values())
+    assert (
+        paths[0].parent == tmp_path / "out" / "reference" / "un_desa" / "wup" / "2025"
+    )
+    (source / wup.FILES["level1"]).write_text("changed")
+    wup.copy_tables(data, source)
+    assert paths[0].read_text() == wup.FILES["level1"]
+
+
+def test_wup_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    copied: list[UrbanicityData] = []
+
+    def copy_tables(data: UrbanicityData) -> list[Path]:
+        copied.append(data)
+        return [data.root / "table.csv"]
+
+    monkeypatch.setattr(wup, "copy_tables", copy_tables)
+    result = CliRunner().invoke(
+        purun, ["reference", "wup", "--output-dir", str(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert copied[0].root == tmp_path
+    assert result.output == f"{tmp_path / 'table.csv'}\n"
+
+
+def test_us_census_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, Path, str]] = []
+
+    def download_archive(url: str, out_dir: Path, expected: str) -> Path:
+        calls.append((url, out_dir, expected))
+        return out_dir / expected
+
+    monkeypatch.setattr(us_census, "download_archive", download_archive)
+    result = CliRunner().invoke(
+        purun, ["reference", "us-census", "--output-dir", str(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        (
+            us_census.URBAN_AREAS_URL,
+            tmp_path / "reference" / "us_census" / "urban_areas" / "2020",
+            us_census.URBAN_AREAS_FILE,
+        )
+    ]
