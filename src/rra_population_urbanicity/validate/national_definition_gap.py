@@ -45,7 +45,12 @@ def by_country(
     data: UrbanicityData, version: str, time_point: str, scheme: ClassScheme
 ) -> pd.DataFrame:
     """Each country's people and urban share under the default cut."""
-    path = data.classification_root(version) / "tabulations" / SHAPES / f"{time_point}.parquet"
+    path = (
+        data.classification_root(version)
+        / "tabulations"
+        / SHAPES
+        / f"{time_point}.parquet"
+    )
     table = pd.read_parquet(path)
     shapes = admin.SHAPES[SHAPES]
     country_of = admin.unit_parents(shapes).set_index("location_id")["country_id"]
