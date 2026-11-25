@@ -92,7 +92,9 @@ def wup_world(ghsl_world: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, 
     monkeypatch.setattr(wup2025_shares, "country_layer", two_countries)
     monkeypatch.setattr(wup2025_shares, "MIN_COUNTRY_POPULATION", 0)
     data = UrbanicityData(ghsl_world)
-    version = runner.run(ClassificationSpecification.model_validate(ghsl_spec()), data, None)
+    version = runner.run(
+        ClassificationSpecification.model_validate(ghsl_spec()), data, None
+    )
     for epoch in (2020, 2025):
         with rasterio.open(data.class_raster_path(version, f"{epoch}q1")) as src:
             codes = src.read(1).astype(np.int16)

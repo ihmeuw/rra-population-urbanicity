@@ -47,7 +47,6 @@ from rra_population_urbanicity.classifiers.base import ClassScheme
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GridDefinition
 from rra_population_urbanicity.inputs import grids
-from rra_population_urbanicity.inputs.providers import ghsl
 from rra_population_urbanicity.reference import wup
 from rra_population_urbanicity.specification import (
     ClassificationSpecification,
@@ -170,9 +169,7 @@ def shares(table: pd.DataFrame, groups: dict[str, list[int]]) -> pd.DataFrame:
     return result
 
 
-def gaps(
-    ours: pd.Series, theirs: pd.Series, weights: pd.Series
-) -> dict[str, Any]:
+def gaps(ours: pd.Series, theirs: pd.Series, weights: pd.Series) -> dict[str, Any]:
     """The median gap by country, in points, and the largest gaps."""
     gap = ((ours - theirs) * 100).dropna()
     large = gap[weights.reindex(gap.index) >= MIN_COUNTRY_POPULATION]
@@ -181,7 +178,8 @@ def gaps(
         "countries": int(large.size),
         "median_absolute_gap": float(large.abs().median()) if large.size else None,
         "largest": {
-            iso3: round(float(value), 2) for iso3, value in largest[:LARGEST_GAPS].items()
+            iso3: round(float(value), 2)
+            for iso3, value in largest[:LARGEST_GAPS].items()
         },
     }
 
