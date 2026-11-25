@@ -170,7 +170,7 @@ def cluster_ids(
         ids["urban_cluster"] = read_window(urban_clusters, spec.grid)
     values, row_off, col_off = codes
     for cluster_type, (class_codes, contiguity) in clusters.cluster_types(
-        spec.method.parameters
+        spec.degurba_parameters
     ).items():
         labels, _ = rules.label(np.isin(values, class_codes), contiguity)
         ids[cluster_type] = (labels, row_off, col_off)

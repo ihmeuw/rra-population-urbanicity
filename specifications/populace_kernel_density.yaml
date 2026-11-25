@@ -1,0 +1,16 @@
+# November's kernel method with its bugs removed, on the Populace surface: each
+# 40 m pixel is urban if the people per km² of land within 1 km of it on the
+# ground reach 300. Land is GHS-LAND at 100 m, as for the Populace DEGURBA run.
+# The classes are not stored; the run tabulates them by admin unit.
+population:
+  source: populace
+  model_version: "2026_10_02.001"
+  resolution: "40"
+grid: moll_1km
+land:
+  source: ghs_land
+  release: r2022a
+time_points: [2020q1, 2021q1, 2022q1, 2023q1, 2024q1, 2025q1, 2026q1]
+method:
+  name: kernel_density
+  parameter_set: kernel_default

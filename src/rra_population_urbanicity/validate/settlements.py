@@ -24,7 +24,6 @@ Written under classifications/<version>/validation/settlements/<reference>/:
 """
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import click
@@ -88,7 +87,9 @@ REFERENCES = {
 }
 
 
-def read_reference(data: UrbanicityData, reference: Reference, crs: str) -> gpd.GeoDataFrame:
+def read_reference(
+    data: UrbanicityData, reference: Reference, crs: str
+) -> gpd.GeoDataFrame:
     """The reference centres: id, name, country, population and shape."""
     path = data.reference_root("ghsl", reference.product_dir, reference.release_dir)
     columns = [reference.id, reference.population, reference.country]
@@ -145,11 +146,13 @@ def match(
     theirs = theirs.assign(mutual=(mutual["_merge"] == "both").to_numpy())
     table = reference.merge(theirs, on="reference_id", how="left")
     table["our_population"] = table["our_id"].map(our_population)
-    table["mutual"] = table["mutual"].fillna(False).astype(bool)
+    table["mutual"] = table["mutual"].eq(other=True)
     return table
 
 
-def summarise(table: pd.DataFrame, our_ids: pd.Index, pairs: pd.DataFrame) -> dict[str, Any]:
+def summarise(
+    table: pd.DataFrame, our_ids: pd.Index, pairs: pd.DataFrame
+) -> dict[str, Any]:
     matched = table["our_id"].notna()
     people = table["reference_population"]
     matched_ours = pd.Index(best(pairs, "our_id")["our_id"])
@@ -159,7 +162,9 @@ def summarise(table: pd.DataFrame, our_ids: pd.Index, pairs: pd.DataFrame) -> di
     shared = table.loc[matched, "our_id"].value_counts()
     large = table[table["mutual"] & (people >= LARGE)]
     log_ratio = np.log(large["our_population"] / large["reference_population"])
-    largest = large.loc[log_ratio.abs().sort_values(ascending=False).index[:LARGEST_RATIOS]]
+    largest = large.loc[
+        log_ratio.abs().sort_values(ascending=False).index[:LARGEST_RATIOS]
+    ]
     return {
         "reference_centres": int(len(table)),
         "our_centres": int(our_ids.size),
@@ -201,9 +206,7 @@ def ratio_summary(ratio: pd.Series) -> dict[str, Any]:
     }
 
 
-def compare(
-    data: UrbanicityData, version: str, reference_name: str
-) -> dict[str, Any]:
+def compare(data: UrbanicityData, version: str, reference_name: str) -> dict[str, Any]:
     root = data.classification_root(version)
     spec = ClassificationSpecification.from_yaml(root / "specification.yaml")
     if TIME_POINT not in spec.time_points:
@@ -214,7 +217,9 @@ def compare(
     window = class_window(path, spec)
     with rasterio.open(path) as src:
         ours = src.read(1)
-    population = grids.load(data, "population", spec.population, grid, TIME_POINT, window)
+    population = grids.load(
+        data, "population", spec.population, grid, TIME_POINT, window
+    )
     reference = read_reference(data, REFERENCES[reference_name], grid.crs)
     theirs = features.rasterize(
         zip(reference.geometry, reference["reference_id"], strict=True),
@@ -224,7 +229,9 @@ def compare(
         dtype="int32",
     )
     clusters = pd.read_parquet(data.cluster_table_path(version, TIME_POINT))
-    centres = clusters[clusters["cluster_type"] == "urban_centre"].set_index("cluster_id")
+    centres = clusters[clusters["cluster_type"] == "urban_centre"].set_index(
+        "cluster_id"
+    )
     pairs = overlaps(ours, theirs, population)
     table = match(
         pd.DataFrame(reference.drop(columns="geometry")),

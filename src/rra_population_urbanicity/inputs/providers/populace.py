@@ -31,6 +31,11 @@ def compiled_path(
     )
 
 
+def vrt_path(root: Path, source: PopulaceSource, time_point: str) -> Path:
+    """The virtual raster that mosaics a time point's group tiles."""
+    return compiled_path(root, source, time_point, "index").with_suffix(".vrt")
+
+
 def load_block(
     source: PopulaceSource,
     block: Block,

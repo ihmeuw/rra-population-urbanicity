@@ -8,6 +8,9 @@ import yaml
 from pydantic import ValidationError
 
 from rra_population_urbanicity.classifiers.degurba.parameters import PARAMETER_SETS
+from rra_population_urbanicity.classifiers.kernel_density.parameters import (
+    PARAMETER_SETS as KERNEL_PARAMETER_SETS,
+)
 from rra_population_urbanicity.grid import GRIDS
 from rra_population_urbanicity.specification import ClassificationSpecification
 
@@ -117,4 +120,22 @@ def test_invalid_specifications_are_rejected(
         target = target[key]
     target[keys[-1]] = value
     with pytest.raises(ValidationError, match=message):
+        ClassificationSpecification.model_validate(raw)
+
+
+KERNEL = SPECIFICATION_DIR / "populace_kernel_density.yaml"
+
+
+def test_a_kernel_specification_resolves_its_own_parameters() -> None:
+    spec = ClassificationSpecification.from_yaml(KERNEL)
+    assert spec.method.parameters == KERNEL_PARAMETER_SETS["kernel_default"]
+    assert spec.built is None
+    with pytest.raises(TypeError, match="kernel_density is not the Degree"):
+        _ = spec.degurba_parameters
+
+
+def test_the_kernel_needs_inputs_on_the_model_grid() -> None:
+    raw = yaml.safe_load(KERNEL.read_text())
+    raw["population"] = {"source": "ghs_pop", "release": "r2023a"}
+    with pytest.raises(ValidationError, match="needs Populace and GHS-LAND"):
         ClassificationSpecification.model_validate(raw)

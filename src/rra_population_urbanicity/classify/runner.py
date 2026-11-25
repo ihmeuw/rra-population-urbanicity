@@ -37,10 +37,14 @@ from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.classifiers.base import ClassScheme
 from rra_population_urbanicity.classifiers.degurba import clusters, rules
 from rra_population_urbanicity.classifiers.degurba.scheme import DEGURBA_L2
+from rra_population_urbanicity.classify import kernel
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import BoolArray, GridDefinition
 from rra_population_urbanicity.inputs import grids
-from rra_population_urbanicity.specification import ClassificationSpecification
+from rra_population_urbanicity.specification import (
+    ClassificationSpecification,
+    KernelDensityMethod,
+)
 
 # Tiles of the output rasters, in cells.
 BLOCK_SIZE = 512
@@ -113,7 +117,7 @@ def crop(inputs: rules.DegurbaInputs, window: Window) -> rules.DegurbaInputs:
 def built_per_person(
     inputs: rules.DegurbaInputs, spec: ClassificationSpecification
 ) -> float | None:
-    if spec.method.parameters.density_on_land != "built_up_and_population":
+    if spec.degurba_parameters.density_on_land != "built_up_and_population":
         return None
     return rules.built_per_person(inputs.population, inputs.built)
 
@@ -122,7 +126,7 @@ def built_threshold(
     inputs: rules.DegurbaInputs, spec: ClassificationSpecification
 ) -> float:
     """The optimal built-up threshold computed on one time point's inputs."""
-    params = spec.method.parameters
+    params = spec.degurba_parameters
     prepared = rules.prepare(inputs, params, built_per_person(inputs, spec))
     return rules.optimal_built_threshold(inputs.population, prepared, params)
 
@@ -135,7 +139,7 @@ def fixed_built_threshold(
     None if the built-up criterion is off, or if each time point computes its
     own threshold.
     """
-    params = spec.method.parameters
+    params = spec.degurba_parameters
     if not (params.uc_built_criterion or params.duc_built_criterion):
         return None
     if params.built_threshold != "optimal":
@@ -199,9 +203,12 @@ def run(
     spec: ClassificationSpecification, data: UrbanicityData, region: str | None
 ) -> str:
     """Run a specification and return the version it was written as."""
-    grid = spec.grid
-    params = spec.method.parameters
     version = reserve_version(data.classifications_root)
+    if isinstance(spec.method, KernelDensityMethod):
+        kernel.run(spec, data, version, region)
+        return version
+    grid = spec.grid
+    params = spec.degurba_parameters
     root = data.classification_root(version)
     window = grid.full_window
     if region is not None:

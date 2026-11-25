@@ -13,4 +13,5 @@ def test_putask_lists_the_stages_with_tasks() -> None:
     result = CliRunner().invoke(putask, ["--help"])
     assert result.exit_code == 0
     assert "inputs" in result.output
-    assert "classify" not in result.output
+    assert "classify" in result.output
+    assert "validate" not in result.output
