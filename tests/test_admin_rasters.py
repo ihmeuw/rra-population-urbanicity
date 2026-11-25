@@ -14,9 +14,11 @@ from rra_population_urbanicity import admin
 from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.cli import purun
 from rra_population_urbanicity.data import UrbanicityData
+from rra_population_urbanicity.grid import GridDefinition
 from rra_population_urbanicity.inputs import blocks
 from rra_population_urbanicity.inputs.blocks import MODEL_CRS, Block
 from rra_population_urbanicity.tabulate import admin_rasters
+from rra_population_urbanicity.validate import wup2025_shares
 
 TEST_SHAPES = "test_a2"
 
@@ -390,3 +392,39 @@ def test_rasters_are_not_used_once_their_shapes_change(admin_world: Path) -> Non
     pd.read_parquet(hierarchy).iloc[:-1].to_parquet(hierarchy)
     with pytest.raises(RuntimeError, match="have changed"):
         admin_rasters.run(data, TEST_SHAPES, None)
+
+
+@pytest.mark.usefixtures("small_frame")
+def test_cells_in_no_unit_take_the_nearest_units_country(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_root = tmp_path / "population-model"
+    monkeypatch.setattr(puc, "POPULATION_MODEL_ROOT", model_root)
+    version = write_raking_set(model_root, {31: 800, 32: 800, 400: 800, 900: 800})
+    # Cells of 40 m from x = -200 to 320 and y = 120 to -280.
+    grid = GridDefinition(
+        name="g",
+        crs=MODEL_CRS,
+        cell_size=40.0,
+        x_min=-200.0,
+        y_max=120.0,
+        n_rows=10,
+        n_cols=13,
+    )
+    countries = admin.nearest_country_raster(grid, version)
+    assert countries.dtype == np.int32
+    assert (countries != admin.NO_UNIT).all()
+    # Unit 31's cells, and cells west and north of it in no unit, are its
+    # country's; so is unit 32 north of unit 400.
+    assert (countries[1:5, :5] == 300).all()
+    assert countries[0, 0] == 300
+    assert countries[1, 8] == 300
+    assert countries[6, 6] == 400
+    # The south-east corner is nearest place 900.
+    assert countries[9, 12] == 900
+
+    # The WUP comparison takes its countries, and their ISO3 codes, this way.
+    monkeypatch.setitem(admin.SHAPES, wup2025_shares.SHAPES, version)
+    layer, iso3 = wup2025_shares.country_layer(grid)
+    np.testing.assert_array_equal(layer, countries)
+    assert iso3.to_dict() == {300: "CCC", 400: "DDD", 900: "SUP"}

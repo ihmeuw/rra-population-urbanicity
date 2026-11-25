@@ -21,6 +21,7 @@ import rasterio
 import shapely
 from rasterio import features
 from rra_tools.shell_tools import mkdir
+from scipy import ndimage
 
 from rra_population_urbanicity import constants as puc
 from rra_population_urbanicity.data import UrbanicityData
@@ -287,3 +288,28 @@ def location_raster(
     with rasterio.open(path) as src:
         stored: LocationArray = src.read(1)
     return stored
+
+
+def nearest_country_raster(
+    grid: GridDefinition, version: ShapesVersion
+) -> LocationArray:
+    """Each cell's country, with cells in no unit given the nearest unit's country.
+
+    A cell's unit is the one containing its centre. A cell whose centre is in
+    no unit, such as a coastal cell whose centre is at sea, takes the country
+    of the nearest cell that is in one, so every cell has a country and the
+    people on the coast are counted with their country.
+    """
+    units = rasterize(
+        read_shapes(version.units_path, grid.crs, version.unit_ids()), grid
+    )
+    nearest = ndimage.distance_transform_edt(
+        units == NO_UNIT, return_distances=False, return_indices=True
+    )
+    units = units[nearest[0], nearest[1]]
+    parents = unit_parents(version)
+    size = max(int(units.max()), int(parents["location_id"].max())) + 1
+    lookup = np.zeros(size, dtype=np.int32)
+    lookup[parents["location_id"]] = parents["country_id"]
+    countries: LocationArray = lookup[units]
+    return countries
