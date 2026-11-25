@@ -331,6 +331,8 @@ def write_classification(root: Path) -> None:
     for tp in TIME_POINTS:
         write_raster(data.class_raster_path(VERSION, tp), codes, scheme.NODATA)
         write_raster(data.urban_centre_raster_path(VERSION, tp), centres, 0)
+        # The urban centre is also the one level-1 urban cluster.
+        write_raster(data.urban_cluster_raster_path(VERSION, tp), centres, 0)
 
 
 @pytest.fixture
@@ -353,6 +355,7 @@ def test_people_by_unit_and_class(classified: Path) -> None:
 
     manifest = yaml.safe_load(manifest_path.read_text())
     assert manifest["pixel_check"]["worst_relative_gap"] == 0
+    assert manifest["urban_clusters"] == "tabulated by unit through their id raster"
     assert manifest["time_points"]["2020q1"]["people_in_no_unit"] == 1
     assert manifest["time_points"]["2023q1"]["people"] == 70 + 99
 
@@ -384,6 +387,7 @@ def test_each_cluster_has_a_main_country_and_admin_1(classified: Path) -> None:
     assert centre["iso3"] == "BBB"
     assert centre["country_share"] == pytest.approx(34 / 55)
     assert centre["admin1_id"] == 2001
+    assert units.loc[("urban_cluster", 1), "country_id"] == 200
     rural = units.loc[("rural_cluster", 1)]
     assert rural[["population", "country_id", "country_share"]].tolist() == [15, 100, 1]
     people = pd.read_parquet(out_dir / "cluster_people_2020q1.parquet")
@@ -544,3 +548,15 @@ def test_the_rt_deliverable(
         / "deliverables"
         / "admin2_urban_rural_lsae_1578.csv"
     ).exists()
+
+
+def test_a_classification_without_urban_cluster_ids(classified: Path) -> None:
+    # Made before urban-cluster ids were saved: their units are left out.
+    data = UrbanicityData(classified)
+    for tp in TIME_POINTS:
+        data.urban_cluster_raster_path(VERSION, tp).unlink()
+    manifest_path = classes.run(data, VERSION, SHAPES)
+    manifest = yaml.safe_load(manifest_path.read_text())
+    assert manifest["urban_clusters"].startswith("not tabulated by unit")
+    units = pd.read_parquet(manifest_path.parent / "cluster_units_2020q1.parquet")
+    assert "urban_cluster" not in set(units.cluster_type)

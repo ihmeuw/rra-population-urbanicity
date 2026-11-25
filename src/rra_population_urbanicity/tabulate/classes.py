@@ -15,11 +15,12 @@ classifications/<version>/tabulations/<shapes>/:
   group.
 - cluster_people_<time point>.parquet: each cluster's people by admin 2 unit;
   and cluster_units_<time point>.parquet: each cluster's country and admin 1,
-  the ones holding most of its people, with their shares. Urban centres are
-  found through the urban-centre raster, and dense, semi-dense and rural
-  clusters by labelling the class raster as the cluster table does. Level-1
-  urban clusters are left out: their ids are not saved with a classification,
-  and they cannot be labelled again from its classes.
+  the ones holding most of its people, with their shares. Urban centres and
+  level-1 urban clusters are found through their id rasters, and dense,
+  semi-dense and rural clusters by labelling the class raster as the cluster
+  table does. A classification made before urban-cluster ids were saved
+  cannot give its urban clusters units, since they cannot be labelled again
+  from its classes; they are left out, and the manifest says so.
 - manifest.yaml: what was tabulated, and the check that a join gives the same
   totals as tabulating the 40 m pixels of a few blocks through the pixel view.
 """
@@ -164,6 +165,9 @@ def cluster_ids(
             data.urban_centre_raster_path(version, time_point), spec.grid
         )
     }
+    urban_clusters = data.urban_cluster_raster_path(version, time_point)
+    if urban_clusters.exists():
+        ids["urban_cluster"] = read_window(urban_clusters, spec.grid)
     values, row_off, col_off = codes
     for cluster_type, (class_codes, contiguity) in clusters.cluster_types(
         spec.method.parameters
@@ -355,7 +359,9 @@ def run(data: UrbanicityData, version: str, shapes: str) -> Path:
             "blocks": list(CHECK_BLOCKS),
             "worst_relative_gap": worst,
         },
-        "urban_clusters": "not tabulated by unit: their ids are not saved",
+        "urban_clusters": "tabulated by unit through their id raster"
+        if data.urban_cluster_raster_path(version, first).exists()
+        else "not tabulated by unit: this classification does not save their ids",
         "time_points": entries,
     }
     manifest_path = out_dir / "manifest.yaml"

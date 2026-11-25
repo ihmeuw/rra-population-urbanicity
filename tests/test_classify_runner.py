@@ -57,6 +57,12 @@ def test_a_run_writes_a_new_version(ghsl_world: Path) -> None:
         assert src.transform == class_transform
     np.testing.assert_array_equal(ids > 0, codes == scheme.URBAN_CENTRE)
 
+    # The town is also the one level-1 urban cluster.
+    with rasterio.open(root / "urban_clusters" / "2020q1.tif") as src:
+        cluster_ids = src.read(1)
+        assert src.dtypes[0] == "int32"
+    np.testing.assert_array_equal(cluster_ids, ids)
+
     clusters = pd.read_parquet(root / "clusters" / "2020q1.parquet")
     town = clusters.set_index("cluster_type").loc["urban_centre"]
     assert set(np.unique(ids[ids > 0])) == {town["cluster_id"]}
@@ -77,6 +83,9 @@ def test_a_run_writes_a_new_version(ghsl_world: Path) -> None:
     assert manifest(root)["region"] is None
     assert (
         manifest(root)["outputs"]["urban_centres"] == "urban_centres/<time_point>.tif"
+    )
+    assert (
+        manifest(root)["outputs"]["urban_clusters"] == "urban_clusters/<time_point>.tif"
     )
 
 

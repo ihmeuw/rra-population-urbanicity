@@ -11,6 +11,10 @@ A run writes, under classifications/<version>/:
 - urban_centres/<time_point>.tif: each cell's urban-centre id, 0 outside
   urban centres, matching `cluster_id` in the cluster table. Centres that
   touch stay separate here, which the class raster cannot show;
+- urban_clusters/<time_point>.tif: each cell's level-1 urban-cluster id, 0
+  outside them, matching `cluster_id` in the cluster table. An urban cluster
+  leaves out class 23 cells below `ucl_density`, so it cannot be labelled
+  again from the class raster;
 - clusters/<time_point>.parquet: the clusters of each time point (see
   `clusters.cluster_table`).
 """
@@ -44,6 +48,7 @@ BLOCK_SIZE = 512
 OUTPUTS = {
     "classes": "classes/<time_point>.tif",
     "urban_centres": "urban_centres/<time_point>.tif",
+    "urban_clusters": "urban_clusters/<time_point>.tif",
     "clusters": "clusters/<time_point>.parquet",
 }
 
@@ -182,7 +187,7 @@ def write_classes(
         dst.write_colormap(1, colours)
 
 
-def write_urban_centres(
+def write_ids(
     path: Path, ids: rules.LabelArray, grid: GridDefinition, window: Window
 ) -> None:
     mkdir(path.parent, parents=True, exist_ok=True)
@@ -225,9 +230,15 @@ def run(
         write_classes(
             data.class_raster_path(version, time_point), codes, grid, window, DEGURBA_L2
         )
-        write_urban_centres(
+        write_ids(
             data.urban_centre_raster_path(version, time_point),
             classification.urban_centres,
+            grid,
+            window,
+        )
+        write_ids(
+            data.urban_cluster_raster_path(version, time_point),
+            classification.urban_clusters,
             grid,
             window,
         )
