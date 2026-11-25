@@ -42,7 +42,9 @@ def test_a_populated_pixel_counts_as_land() -> None:
     population = np.zeros((21, 21), dtype=np.float32)
     population[10, 10] = 16.0
     land = np.zeros_like(population)
-    smoothed = rules.density(population, land, rules.disc_kernel(80.0, 40.0, 0.0), PIXEL_KM2)
+    smoothed = rules.density(
+        population, land, rules.disc_kernel(80.0, 40.0, 0.0), PIXEL_KM2
+    )
     # The disc holds one pixel of land, the populated one.
     assert smoothed[10, 10] == pytest.approx(16.0 / PIXEL_KM2)
     assert smoothed[0, 0] == 0.0
@@ -57,7 +59,12 @@ def test_pixels_are_urban_rural_water_or_without_data() -> None:
     has_data = np.ones(population.shape, dtype=bool)
     has_data[0, 0] = False
     codes, smoothed = rules.classify(
-        population, land, has_data, rules.disc_kernel(120.0, 40.0, 0.0), PARAMS, PIXEL_KM2
+        population,
+        land,
+        has_data,
+        rules.disc_kernel(120.0, 40.0, 0.0),
+        PARAMS,
+        PIXEL_KM2,
     )
     assert codes[20, 4] == scheme.URBAN
     assert smoothed[20, 4] == pytest.approx(312.5, rel=1e-5)

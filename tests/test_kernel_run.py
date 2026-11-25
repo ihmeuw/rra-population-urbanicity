@@ -107,7 +107,9 @@ def kernel_world(
     return root
 
 
-def read_tabulation(root: Path, version: str, shapes: str, time_point: str) -> dict[Any, float]:
+def read_tabulation(
+    root: Path, version: str, shapes: str, time_point: str
+) -> dict[Any, float]:
     path = (
         UrbanicityData(root).classification_root(version)
         / "tabulations"

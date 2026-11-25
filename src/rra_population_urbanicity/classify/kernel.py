@@ -123,7 +123,9 @@ def tabulate(
     index[CODES] = np.arange(len(CODES))
     keys = where * len(CODES) + index[codes[has_people]]
     totals = np.bincount(
-        keys, weights=people[has_people].astype(np.float64), minlength=ids.size * len(CODES)
+        keys,
+        weights=people[has_people].astype(np.float64),
+        minlength=ids.size * len(CODES),
     )
     table = pd.DataFrame(
         {
@@ -146,7 +148,9 @@ def run_block(data: UrbanicityData, version: str, block_key: str) -> Path:
         raise TypeError(msg)
     block = Block.from_key(block_key)
     params = spec.method.parameters
-    kernel = rules.disc_kernel(params.radius_m, blocks.PIXEL_SIZE, block_latitude(block))
+    kernel = rules.disc_kernel(
+        params.radius_m, blocks.PIXEL_SIZE, block_latitude(block)
+    )
     window = margin_window(block, kernel)
     inner = (
         slice(kernel.shape[0] // 2, kernel.shape[0] // 2 + block.shape[0]),
@@ -215,7 +219,9 @@ def reduce(root: Path, block_keys: list[str]) -> dict[str, Any]:
         path = root / "tabulations" / str(shapes) / f"{time_point}.parquet"
         mkdir(path.parent, parents=True, exist_ok=True)
         table.to_parquet(path, index=False)
-        urban = float(table.loc[table["class_code"] == BINARY.code("urban"), "population"].sum())
+        urban = float(
+            table.loc[table["class_code"] == BINARY.code("urban"), "population"].sum()
+        )
         checks.setdefault(str(shapes), {})[str(time_point)] = {
             "people": total,
             "people_in_no_unit": float(

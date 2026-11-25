@@ -7,6 +7,7 @@ import rasterio
 import yaml
 from click.testing import CliRunner
 
+from rra_population_urbanicity import admin
 from rra_population_urbanicity.classifiers.base import ClassScheme
 from rra_population_urbanicity.classifiers.degurba import scheme
 from rra_population_urbanicity.classify import runner
@@ -194,3 +195,57 @@ def test_wup2025_command(wup_world: tuple[Path, str]) -> None:
         "ghsl_population city 40.0% town 60.0% rural 0.0% | "
         "wup_population city 55.6% town 22.2% rural 22.2%"
     )
+
+
+class FakeShapes:
+    """Units 31 in AAA and 32 in SRB, as the raking set would give them."""
+
+    def ihme_loc_ids(self) -> pd.Series:
+        return pd.Series({301: "AAA", 302: "SRB"})
+
+
+def test_urban_shares_against_national_definitions(
+    wup_world: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, version = wup_world
+    monkeypatch.setitem(admin.SHAPES, wup2025_shares.SHAPES, FakeShapes())
+    monkeypatch.setattr(
+        admin,
+        "unit_parents",
+        lambda shapes: pd.DataFrame(
+            {"location_id": [31, 32], "country_id": [301, 302], "admin1_id": [31, 32]}
+        ),
+    )
+    data = UrbanicityData(root)
+    for time_point in ("2020q1", "2025q1"):
+        path = (
+            data.classification_root(version)
+            / "tabulations"
+            / wup2025_shares.SHAPES
+            / f"{time_point}.parquet"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            {
+                "location_id": [31, 31, 32, 32],
+                "class_code": [30, 12, 21, 12],
+                "population": [30.0, 10.0, 5.0, 15.0],
+            }
+        ).to_parquet(path)
+
+    result = CliRunner().invoke(
+        purun, ["validate", "national-gap", version, "-o", str(root)]
+    )
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[0] == (
+        "2020q1: urban 58.3% against 51.1% by national definitions; "
+        "median gap 17.0 points in 2 countries"
+    )
+    out_dir = (
+        data.classification_root(version) / "validation" / "national_definition_gap"
+    )
+    table = pd.read_parquet(out_dir / "by_country.parquet")
+    assert table.loc[table["iso3"] == "AAA", "urban_share"].tolist() == [0.75, 0.75]
+    summary = yaml.safe_load((out_dir / "summary.yaml").read_text())
+    gaps = summary["time_points"]["2025q1"]["gap_by_country"]["largest"]
+    assert gaps == {"SRB": -19.0, "AAA": 15.0}
