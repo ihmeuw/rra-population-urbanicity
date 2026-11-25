@@ -21,12 +21,20 @@ from rra_population_urbanicity.tabulate import admin_rasters
 TEST_SHAPES = "test_a2"
 
 
-def write_shapes(root: Path, name: str, shapes: dict[int, shapely.Polygon]) -> None:
-    """Shapes given on the model grid, saved in longitude and latitude as the inputs are."""
+def write_shapes(
+    root: Path, name: str, shapes: dict[int, shapely.Polygon], *, raking: bool = False
+) -> None:
+    """Shapes given on the model grid, saved in longitude and latitude as the inputs are.
+
+    With `raking`, as the model's processed raking units; otherwise as its cached inputs.
+    """
     frame = gpd.GeoDataFrame(
         {"location_id": list(shapes)}, geometry=list(shapes.values()), crs=MODEL_CRS
     ).to_crs("EPSG:4326")
-    path = root / "admin-inputs" / "raking" / "gbd-inputs" / f"shapes_{name}.parquet"
+    folder = root / "admin-inputs" / "raking"
+    if not raking:
+        folder = folder / "gbd-inputs"
+    path = folder / f"shapes_{name}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(path)
 
@@ -83,11 +91,11 @@ def admin_world(
     return output
 
 
-def read_frame(data: UrbanicityData) -> np.ndarray:
+def read_frame(data: UrbanicityData, shapes: str = TEST_SHAPES) -> np.ndarray:
     """The whole small frame, put together from its block rasters."""
     frame = np.zeros((blocks.HEIGHT, blocks.WIDTH), dtype=np.int32)
     for block in blocks.all_blocks():
-        with rasterio.open(data.admin_block_path(TEST_SHAPES, block.key)) as src:
+        with rasterio.open(data.admin_block_path(shapes, block.key)) as src:
             assert src.transform.almost_equals(block.transform)
             frame[block.window.toslices()] = src.read(1)
     return frame
@@ -191,7 +199,7 @@ def test_shapes_a_hair_past_the_antimeridian_stay_on_their_side(
         path
     )
 
-    west, _, east, _ = admin.read_shapes("edge", MODEL_CRS).total_bounds
+    west, _, east, _ = admin.read_shapes(path, MODEL_CRS).total_bounds
     assert west > 19_900_000  # 179° east, not near -20,037,508
     assert east == pytest.approx(admin_rasters.WORLD_X_MAX)
 
@@ -199,7 +207,7 @@ def test_shapes_a_hair_past_the_antimeridian_stay_on_their_side(
         path
     )
     with pytest.raises(ValueError, match="not in longitude and latitude"):
-        admin.read_shapes("edge", MODEL_CRS)
+        admin.read_shapes(path, MODEL_CRS)
 
 
 @pytest.mark.usefixtures("small_frame")
@@ -254,3 +262,131 @@ def test_units_and_countries_from_one_file_of_every_level(
     assert parents.loc[31].tolist() == [300, 31]
     assert parents.loc[300].tolist() == [300, 300]
     assert 800 not in parents.index  # above the countries
+
+
+RAKING_HIERARCHY = pd.DataFrame(
+    {
+        # World, super-region, region; country 300 with units 31 and 32;
+        # country 400, whose children 41 and 42 are population groups.
+        "location_id": [1, 700, 800, 300, 31, 32, 400, 41, 42],
+        "path_to_top_parent": [
+            "1",
+            "1,700",
+            "1,700,800",
+            "1,700,800,300",
+            "1,700,800,300,31",
+            "1,700,800,300,32",
+            "1,700,800,400",
+            "1,700,800,400,41",
+            "1,700,800,400,42",
+        ],
+        "ihme_loc_id": ["G", "S", "R", "CCC", "CCC_31", "CCC_32", "DDD", "D1", "D2"],
+        "most_detailed": [0, 0, 0, 0, 1, 1, 0, 1, 1],
+    }
+)
+
+
+def write_raking_set(model_root: Path, raked: dict[int, int]) -> admin.ShapesVersion:
+    """A raking set on the small frame: units 31, 32 and 400 and place 900.
+
+    `raked` gives each raking unit's region. Place 900 is not in the hierarchy,
+    as the places GBD does not estimate are not. Unit 32 reaches down to
+    y = -40, so it overlaps unit 400 by 6,400 m² and place 900 by 1,600 m².
+    """
+    write_shapes(
+        model_root,
+        "rk",
+        {
+            31: box(-120, -200, 0, 80),
+            32: box(0, -40, 200, 80),
+            400: box(0, -200, 160, 0),
+            900: box(160, -200, 280, 0),
+        },
+        raking=True,
+    )
+    admin.admin_inputs().mkdir(parents=True)
+    RAKING_HIERARCHY.to_parquet(admin.admin_inputs() / "hierarchy_rk.parquet")
+    pd.DataFrame(
+        {
+            "location_id": list(raked),
+            "year_id": 2020,
+            "population": 10.0,
+            "region_id": list(raked.values()),
+            "ihme_loc_id": [f"L{i}" if i != 900 else "SUP" for i in raked],
+        }
+    ).to_parquet(admin.raking_inputs() / "population_rk.parquet")
+    return admin.ShapesVersion(
+        units="rk", countries=None, hierarchy="rk", country_level=3, raking=True
+    )
+
+
+@pytest.mark.usefixtures("small_frame")
+def test_a_raking_set_takes_the_models_units(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_root = tmp_path / "population-model"
+    monkeypatch.setattr(puc, "POPULATION_MODEL_ROOT", model_root)
+    version = write_raking_set(model_root, {31: 800, 32: 800, 400: 800, 900: 800})
+    monkeypatch.setitem(admin.SHAPES, "rk", version)
+
+    # The country stands in for its population groups, and place 900 is put
+    # under its region at a country's level.
+    assert sorted(version.unit_ids()) == [31, 32, 400, 900]
+    assert sorted(version.country_ids()) == [300, 400, 900]
+    parents = admin.unit_parents(version).set_index("location_id")
+    assert parents.loc[31].tolist() == [300, 31]
+    assert parents.loc[400].tolist() == [400, 400]
+    assert parents.loc[900].tolist() == [900, 900]
+    ids = version.ihme_loc_ids()
+    assert (ids[300], ids[900]) == ("CCC", "SUP")
+
+    # With no country shapes, the units are checked for overlaps instead.
+    monkeypatch.setattr(admin_rasters, "MIN_OVERLAP_KM2", 0.001)
+    data = UrbanicityData(tmp_path / "output")
+    manifest_path = admin_rasters.run(data, "rk", None)
+    assert manifest_path is not None
+    manifest = yaml.safe_load(manifest_path.read_text())
+    assert manifest["countries"] is None
+    assert "coverage_pixels" not in manifest
+    assert manifest["overlaps"] == {
+        "total_km2": 0.008,
+        "pairs_over_0.001_km2": [
+            {"units": [32, 400], "km2": 0.006},
+            {"units": [32, 900], "km2": 0.002},
+        ],
+    }
+    assert len(manifest["inputs"]) == len(version.input_files()) == 3
+    frame = read_frame(data, "rk")
+    assert frame[0].tolist() == [31, 31, 31, 32, 32, 32, 32, 32, 0, 0]  # y = 60
+    assert frame[6].tolist() == [31, 31, 31, 400, 400, 400, 400, 900, 900, 900]
+
+
+@pytest.mark.usefixtures("small_frame")
+def test_a_raking_place_needs_a_region(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(puc, "POPULATION_MODEL_ROOT", tmp_path / "population-model")
+    version = write_raking_set(
+        tmp_path / "population-model", {31: 800, 32: 800, 400: 800, 900: 555}
+    )
+    with pytest.raises(ValueError, match=r"Raking units \[900\] have no region"):
+        version.unit_ids()
+
+
+def test_rasters_are_not_used_once_their_shapes_change(admin_world: Path) -> None:
+    data = UrbanicityData(admin_world)
+    manifest_path = admin_rasters.run(data, TEST_SHAPES, None)
+    assert manifest_path is not None
+    # Rasters made before checksums were recorded are not checked.
+    manifest = yaml.safe_load(manifest_path.read_text())
+    recorded = manifest.pop("inputs")
+    manifest_path.write_text(yaml.safe_dump(manifest))
+    admin_rasters.check_unchanged(data, TEST_SHAPES)
+    manifest["inputs"] = recorded
+    manifest_path.write_text(yaml.safe_dump(manifest))
+    admin_rasters.check_unchanged(data, TEST_SHAPES)
+
+    hierarchy = admin.admin_inputs() / "hierarchy_test.parquet"
+    pd.read_parquet(hierarchy).iloc[:-1].to_parquet(hierarchy)
+    with pytest.raises(RuntimeError, match="have changed"):
+        admin_rasters.run(data, TEST_SHAPES, None)

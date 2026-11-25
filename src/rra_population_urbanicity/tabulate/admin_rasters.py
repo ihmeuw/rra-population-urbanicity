@@ -7,7 +7,11 @@ on, since a block takes a second or two.
 
 As a check, each block's country shapes are rasterized too, and the manifest
 counts the pixels where the two disagree: in a country and in no unit, in a
-unit and in no country, and in a unit of another country.
+unit and in no country, and in a unit of another country. A version with no
+country shapes is checked instead for units whose shapes overlap.
+
+The manifest records a checksum of every file the shapes are read from, and the
+rasters are not used once any of them has changed.
 """
 
 import datetime
@@ -46,6 +50,8 @@ WORLD_X_MAX = 20_037_508.34
 # Tiles of the block rasters, in pixels.
 TILE_SIZE = 512
 KINDS = ("in_a_country_and_no_unit", "in_a_unit_and_no_country", "in_another_country")
+# Overlaps between units smaller than this are reported only in their total.
+MIN_OVERLAP_KM2 = 1.0
 
 
 @dataclass(frozen=True)
@@ -57,8 +63,8 @@ class Shapes:
     tree: shapely.STRtree
 
 
-def load_shapes(name: str, keep: list[int]) -> Shapes:
-    frame = admin.read_shapes(name, MODEL_CRS, keep)
+def load_shapes(path: Path, keep: list[int]) -> Shapes:
+    frame = admin.read_shapes(path, MODEL_CRS, keep)
     geometry = frame.geometry.to_numpy()
     return Shapes(
         geometry, frame["location_id"].to_numpy(np.int64), shapely.STRtree(geometry)
@@ -129,6 +135,50 @@ def coverage(
     return pd.concat(frames, ignore_index=True)
 
 
+def overlaps(shapes: Shapes) -> dict[str, Any]:
+    """The area where units' shapes overlap, in all and for each pair over MIN_OVERLAP_KM2.
+
+    The model grid's CRS is equal-area, so areas are measured on it.
+    """
+    left, right = shapes.tree.query(shapes.geometry, predicate="intersects")
+    pair = left < right
+    left, right = left[pair], right[pair]
+    valid = shapely.make_valid(shapes.geometry)
+    km2 = shapely.area(shapely.intersection(valid[left], valid[right])) / 1e6
+    order = np.argsort(-km2)
+    return {
+        "total_km2": round(float(km2.sum()), 3),
+        f"pairs_over_{MIN_OVERLAP_KM2:g}_km2": [
+            {
+                "units": [
+                    int(shapes.location_id[left[i]]),
+                    int(shapes.location_id[right[i]]),
+                ],
+                "km2": round(float(km2[i]), 3),
+            }
+            for i in order
+            if km2[i] > MIN_OVERLAP_KM2
+        ],
+    }
+
+
+def check_unchanged(data: UrbanicityData, shapes: str) -> None:
+    """Fail if a file the shapes' rasters were made from has changed since.
+
+    Rasters made before checksums were recorded are not checked.
+    """
+    manifest_path = data.admin_block_root(shapes) / "manifest.yaml"
+    if not manifest_path.exists():
+        return
+    recorded = yaml.safe_load(manifest_path.read_text()).get("inputs")
+    if recorded is not None and recorded != admin.checksums(admin.SHAPES[shapes]):
+        msg = (
+            f"The files the {shapes} rasters were made from have changed. "
+            f"Remove {manifest_path.parent} to make them again."
+        )
+        raise RuntimeError(msg)
+
+
 def write_block(path: Path, values: IdArray, block: Block) -> None:
     """Write a block's raster, under a temporary name until it is complete."""
     partial = path.with_name(f"{path.stem}.part.tif")
@@ -155,15 +205,34 @@ def write_block(path: Path, values: IdArray, block: Block) -> None:
 def run_block(
     block: Block,
     units: Shapes,
-    countries: Shapes,
+    countries: Shapes | None,
     country_of: npt.NDArray[np.int64],
     data: UrbanicityData,
     shapes: str,
-) -> pd.DataFrame:
+) -> pd.DataFrame | None:
     unit_ids = burn(units, block)
     write_block(data.admin_block_path(shapes, block.key), unit_ids, block)
+    if countries is None:
+        return None
     country_ids = burn(countries, block)
     return coverage(unit_ids, country_ids, country_of).assign(block_key=block.key)
+
+
+def coverage_report(table: pd.DataFrame) -> dict[str, Any]:
+    """Pixels where the units and the country shapes disagree, in all and by country."""
+    totals = table.groupby("kind")["pixels"].sum()
+    by_country = table.groupby(["kind", "country_id"])["pixels"].sum()
+    return {
+        "coverage_pixels": {kind: int(totals.get(kind, 0)) for kind in KINDS},
+        "coverage_largest": {
+            kind: {
+                int(country): int(pixels)
+                for country, pixels in by_country[kind].nlargest(10).items()
+            }
+            for kind in KINDS
+            if kind in by_country.index.get_level_values(0)
+        },
+    }
 
 
 def run(data: UrbanicityData, shapes: str, region: str | None) -> Path | None:
@@ -174,10 +243,16 @@ def run(data: UrbanicityData, shapes: str, region: str | None) -> Path | None:
     root = data.admin_block_root(shapes)
     manifest_path = root / "manifest.yaml"
     if manifest_path.exists():
+        check_unchanged(data, shapes)
         return None
     version = admin.SHAPES[shapes]
-    units = load_shapes(version.units, version.unit_ids())
-    countries = load_shapes(version.countries, version.country_ids())
+    inputs = admin.checksums(version)
+    units = load_shapes(version.units_path, version.unit_ids())
+    countries = (
+        None
+        if version.countries_path is None
+        else load_shapes(version.countries_path, version.country_ids())
+    )
     country_of = country_lookup(admin.unit_parents(version))
     selected = (
         blocks.all_blocks()
@@ -199,30 +274,24 @@ def run(data: UrbanicityData, shapes: str, region: str | None) -> Path | None:
                 selected,
             )
         )
-    table = pd.concat(results, ignore_index=True)
-    table.to_csv(root / "coverage.csv", index=False)
-    totals = table.groupby("kind")["pixels"].sum()
-    by_country = table.groupby(["kind", "country_id"])["pixels"].sum()
-    manifest = {
+    manifest: dict[str, Any] = {
         "shapes": shapes,
-        "units": version.units,
-        "countries": version.countries,
-        "hierarchy": version.hierarchy,
+        "units": str(version.units_path),
+        "countries": None if countries is None else str(version.countries_path),
+        "hierarchy": str(version.hierarchy_path),
+        "inputs": inputs,
         "rule": "each pixel takes the unit whose shape contains its centre; 0 for none",
         "created": datetime.datetime.now(tz=datetime.UTC).isoformat(timespec="seconds"),
         "package_version": package_version("rra-population-urbanicity"),
         "blocks": len(selected),
         "region": region,
-        "coverage_pixels": {kind: int(totals.get(kind, 0)) for kind in KINDS},
-        "coverage_largest": {
-            kind: {
-                int(country): int(pixels)
-                for country, pixels in by_country[kind].nlargest(10).items()
-            }
-            for kind in KINDS
-            if kind in by_country.index.get_level_values(0)
-        },
     }
+    if countries is None:
+        manifest["overlaps"] = overlaps(units)
+    else:
+        table = pd.concat(results, ignore_index=True)
+        table.to_csv(root / "coverage.csv", index=False)
+        manifest.update(coverage_report(table))
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest_path
 

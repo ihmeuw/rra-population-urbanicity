@@ -12,9 +12,9 @@ point, since finding each pixel's cell is the costly part, and the reduce adds
 up the rows that blocks share. The reduce checks the table three ways:
 - summed over units, it equals the population grid, cell by cell;
 - summed over cells, it equals the block's pixels, unit by unit;
-- each country's total is compared with the GBD population Populace is raked
-  to, which is reported and not checked, since the two sets of shapes differ
-  at borders and coasts.
+- each country's total is compared with the population Populace is raked to,
+  which is reported and not checked, since the shapes may differ from the ones
+  Populace is raked to at borders and coasts.
 """
 
 import datetime
@@ -52,6 +52,7 @@ from rra_population_urbanicity.specification import (
     ClassificationSpecification,
     PopulaceSource,
 )
+from rra_population_urbanicity.tabulate import admin_rasters
 
 type Arrays = dict[str, npt.NDArray[Any]]
 
@@ -65,7 +66,8 @@ GRID_TOLERANCE = 1e-6
 # Summed over cells, each unit must keep its pixels' people to within this share.
 UNIT_TOLERANCE = 1e-9
 CONCURRENCY_LIMIT = 200
-GBD_POPULATION = "population_gbd_2023.parquet"
+# The units Populace is raked to, whose populations the countries are compared with.
+RAKING_SHAPES = "raking_gbd_2023"
 # How close countries come to GBD's population, for the report.
 GBD_BANDS = (0.001, 0.01)
 
@@ -158,21 +160,32 @@ def run_block(work_dir: Path, key: str) -> None:
 
 
 def gbd_population(year: int) -> pd.Series:
-    """GBD 2023's population by location for a year, as Populace is raked to it.
+    """The population Populace is raked to for a year, by country.
 
-    Past GBD's last year, rra-population-model projects the last year's
-    population forward by its growth over the same number of years before it.
+    rra-population-model rakes to each of its units' populations. Past their
+    last year, it projects each unit's last population forward by its growth
+    over the same number of years before it. The units' populations are then
+    added up to their countries. Places with no population, or none known, are
+    left out.
     """
-    population = pd.read_parquet(admin.admin_inputs() / GBD_POPULATION)
+    version = admin.SHAPES[RAKING_SHAPES]
+    population = pd.read_parquet(
+        version.raking_population_path,
+        columns=["location_id", "year_id", "population"],
+    )
     by_year = population.set_index(["year_id", "location_id"])["population"]
     last = int(population["year_id"].max())
     if year <= last:
-        result: pd.Series = by_year.loc[year]
-        return result
-    last_population = by_year.loc[last]
-    earlier = by_year.loc[last - (year - last)]
-    projected: pd.Series = last_population * (last_population / earlier)
-    return projected
+        units = by_year.loc[year]
+    else:
+        last_population = by_year.loc[last]
+        earlier = by_year.loc[last - (year - last)]
+        units = last_population * (last_population / earlier)
+    country_of = admin.unit_parents(version).set_index("location_id")["country_id"]
+    countries: pd.Series = units.groupby(country_of.reindex(units.index)).sum(
+        min_count=1
+    )
+    return countries[countries > 0]
 
 
 def check_grid(
@@ -317,6 +330,7 @@ def run(
     if not isinstance(spec.population, PopulaceSource):
         msg = "Only a population surface on the model grid can be tabulated by unit."
         raise TypeError(msg)
+    admin_rasters.check_unchanged(data, shapes)
     root = data.population_by_admin_root(spec.grid.name, spec.population, shapes)
     time_points = [
         tp for tp in spec.time_points if not (root / f"{tp}.parquet").exists()

@@ -303,10 +303,7 @@ def run(data: UrbanicityData, version: str, shapes: str) -> Path:
         raise TypeError(msg)
     shapes_version = admin.SHAPES[shapes]
     parents = admin.unit_parents(shapes_version)
-    hierarchy = pd.read_parquet(
-        shapes_version.hierarchy_path, columns=["location_id", "ihme_loc_id"]
-    )
-    iso3 = hierarchy.set_index("location_id")["ihme_loc_id"]
+    iso3 = shapes_version.ihme_loc_ids()
     table_root = data.population_by_admin_root(spec.grid.name, spec.population, shapes)
     out_dir = root / "tabulations" / shapes
     mkdir(out_dir, parents=True, exist_ok=True)

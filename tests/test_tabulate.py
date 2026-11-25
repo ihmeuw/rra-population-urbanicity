@@ -99,6 +99,20 @@ def write_grid(data: UrbanicityData, time_point: str, cells: dict[Any, float]) -
     write_raster(path, values, np.nan)
 
 
+def write_raked(by_unit: dict[int, list[float]], years: list[int]) -> None:
+    """The populations of the units Populace is raked to, by year."""
+    path = admin.SHAPES[population.RAKING_SHAPES].raking_population_path
+    pd.DataFrame(
+        {
+            "location_id": [unit for unit in by_unit for _ in years],
+            "year_id": years * len(by_unit),
+            "population": [p for values in by_unit.values() for p in values],
+            "region_id": 1,
+            "ihme_loc_id": "X",
+        }
+    ).to_parquet(path)
+
+
 @pytest.fixture
 def table_world(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_frame: None
@@ -139,17 +153,24 @@ def table_world(
             "most_detailed": [0, 0, 0, 1, 1, 1],
         }
     ).to_parquet(inputs / "hierarchy_test.parquet")
-    pd.DataFrame(
-        {
-            "location_id": [100, 200] * 3,
-            "year_id": [2020, 2020, 2023, 2023, 2024, 2024],
-            "population": [35.0, 40.0, 134.0, 40.0, 134.0, 40.0],
-        }
-    ).to_parquet(inputs / population.GBD_POPULATION)
     monkeypatch.setitem(
         admin.SHAPES,
         SHAPES,
         admin.ShapesVersion(units=SHAPES, countries="test_a0", hierarchy="test"),
+    )
+    # The units Populace is raked to: 35 people in country 100 in 2020 and
+    # 134 after; 40 in country 200.
+    raking = admin.ShapesVersion(
+        units="test_raking", countries=None, hierarchy="test", raking=True
+    )
+    monkeypatch.setitem(admin.SHAPES, population.RAKING_SHAPES, raking)
+    write_raked(
+        {
+            11: [20.0, 100.0, 100.0],
+            12: [15.0, 34.0, 34.0],
+            21: [40.0, 40.0, 40.0],
+        },
+        years=[2020, 2023, 2024],
     )
 
     def run_parallel(**kwargs: Any) -> str:
@@ -237,20 +258,19 @@ def test_unit_rasters_are_checked(table_world: Path) -> None:
         population.read_units(data, SHAPES, Block(1, 0))
 
 
-def test_gbd_population_is_projected_past_its_last_year(table_world: Path) -> None:
-    # As rra-population-model does: 2024's population times its growth since
-    # 2023, for 2025.
-    path = admin.admin_inputs() / population.GBD_POPULATION
-    pd.DataFrame(
-        {
-            "location_id": [100] * 3,
-            "year_id": [2022, 2023, 2024],
-            "population": [80.0, 90.0, 100.0],
-        }
-    ).to_parquet(path)
+@pytest.mark.usefixtures("table_world")
+def test_the_raked_population_is_projected_unit_by_unit() -> None:
+    # As rra-population-model does: each unit's 2024 population times its
+    # growth since 2023, for 2025, and only then added up to the country.
+    write_raked(
+        {11: [50.0, 50.0, 50.0], 12: [30.0, 40.0, 50.0], 21: [0.0, 0.0, 0.0]},
+        years=[2022, 2023, 2024],
+    )
     assert population.gbd_population(2023)[100] == 90
-    assert population.gbd_population(2025)[100] == pytest.approx(100 * 100 / 90)
-    assert population.gbd_population(2026)[100] == pytest.approx(100 * 100 / 80)
+    assert population.gbd_population(2025)[100] == pytest.approx(50 + 50 * 50 / 40)
+    assert population.gbd_population(2026)[100] == pytest.approx(50 + 50 * 50 / 30)
+    # A country with no people has nothing to compare with.
+    assert 200 not in population.gbd_population(2023).index
 
 
 def test_the_commands_tabulate_and_run_one_block(

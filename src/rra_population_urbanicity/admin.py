@@ -4,11 +4,12 @@ A cell belongs to the unit whose shape contains its centre, as a pixel belongs
 to the cell containing its centre (`grid.pixel_to_cell`). Cells whose centres
 are in no shape, such as the open ocean, belong to none (0).
 
-The shapes are the ones rra-population-model rakes to, read from its admin
-inputs. The raster of a grid and shapes version is made once and kept under
-admin-rasters/.
+The shapes are read from rra-population-model's admin inputs: the GBD and
+LSAE files it caches, and the processed set it rakes Populace to. The raster of
+a grid and shapes version is made once and kept under admin-rasters/.
 """
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,8 +37,14 @@ WORLD_MAX = np.array([180.0, 90.0])
 BLOCK_SIZE = 512
 
 
+def raking_inputs() -> Path:
+    """rra-population-model's processed raking units: the shapes and populations it rakes to."""
+    return puc.POPULATION_MODEL_ROOT / "admin-inputs" / "raking"
+
+
 def admin_inputs() -> Path:
-    return puc.POPULATION_MODEL_ROOT / "admin-inputs" / "raking" / "gbd-inputs"
+    """The GBD and LSAE files rra-population-model caches, as they come."""
+    return raking_inputs() / "gbd-inputs"
 
 
 def shapes_path(shapes: str) -> Path:
@@ -53,23 +60,91 @@ class ShapesVersion:
     its locations at `country_level`: the position of the country in a path
     from the top of the hierarchy. A shapes file may hold more than either,
     as GBD's holds every level; only their shapes are used.
+
+    A raking set's units are instead the locations rra-population-model rakes
+    to, from its processed shapes and population files of the same name. Those
+    not in the hierarchy, the places GBD does not estimate, are put under their
+    GBD region, at a country's level.
     """
 
     units: str  # the shapes file holding the units, such as lsae_1578_a2
-    countries: str  # the shapes file holding the countries
+    countries: str | None  # the shapes file holding the countries, if there is one
     hierarchy: str  # the hierarchy the units belong to
     country_level: int = 1  # 1 when countries are just below the world
+    raking: bool = False  # the units are the model's processed raking units
 
     @property
     def hierarchy_path(self) -> Path:
         return admin_inputs() / f"hierarchy_{self.hierarchy}.parquet"
+
+    @property
+    def units_path(self) -> Path:
+        root = raking_inputs() if self.raking else admin_inputs()
+        return root / f"shapes_{self.units}.parquet"
+
+    @property
+    def countries_path(self) -> Path | None:
+        return None if self.countries is None else shapes_path(self.countries)
+
+    @property
+    def raking_population_path(self) -> Path:
+        return raking_inputs() / f"population_{self.units}.parquet"
+
+    def input_files(self) -> list[Path]:
+        """The files the version is read from."""
+        files = [self.units_path, self.hierarchy_path]
+        if self.countries_path is not None:
+            files.append(self.countries_path)
+        if self.raking:
+            files.append(self.raking_population_path)
+        return files
 
     def paths(self) -> pd.DataFrame:
         hierarchy = pd.read_parquet(
             self.hierarchy_path,
             columns=["location_id", "path_to_top_parent", "most_detailed"],
         )
+        if self.raking:
+            hierarchy = self._raking_hierarchy(hierarchy)
         return hierarchy.assign(path=hierarchy["path_to_top_parent"].str.split(","))
+
+    def _raking_hierarchy(self, hierarchy: pd.DataFrame) -> pd.DataFrame:
+        raked = pd.read_parquet(
+            self.raking_population_path, columns=["location_id", "region_id"]
+        ).drop_duplicates("location_id")
+        known = hierarchy.set_index("location_id")["path_to_top_parent"]
+        added = raked[~raked["location_id"].isin(known.index)]
+        region_path = added["region_id"].map(known)
+        if region_path.isna().any():
+            missing = sorted(added.loc[region_path.isna(), "location_id"])
+            msg = f"Raking units {missing} have no region in the {self.hierarchy} hierarchy."
+            raise ValueError(msg)
+        added = added.assign(
+            path_to_top_parent=region_path + "," + added["location_id"].astype(str)
+        )
+        combined = pd.concat(
+            [hierarchy[["location_id", "path_to_top_parent"]], added],
+            ignore_index=True,
+        )
+        is_unit = combined["location_id"].isin(raked["location_id"])
+        return combined.assign(most_detailed=is_unit.astype(int))[
+            ["location_id", "path_to_top_parent", "most_detailed"]
+        ]
+
+    def ihme_loc_ids(self) -> pd.Series:
+        """Each location's ihme_loc_id, by location_id."""
+        frames = [
+            pd.read_parquet(self.hierarchy_path, columns=["location_id", "ihme_loc_id"])
+        ]
+        if self.raking:
+            frames.append(
+                pd.read_parquet(
+                    self.raking_population_path, columns=["location_id", "ihme_loc_id"]
+                )
+            )
+        combined = pd.concat(frames, ignore_index=True).drop_duplicates("location_id")
+        ids: pd.Series = combined.set_index("location_id")["ihme_loc_id"]
+        return ids
 
     def unit_ids(self) -> list[int]:
         hierarchy = self.paths()
@@ -90,12 +165,33 @@ SHAPES = {
     "lsae_1578_a2": ShapesVersion(
         units="lsae_1578_a2", countries="lsae_1578_a0", hierarchy="lsae_1578"
     ),
-    # GBD 2023's most detailed locations, which Populace is raked to. Its
-    # paths run world, super-region, region, country.
-    "gbd_2023": ShapesVersion(
-        units="gbd_2023", countries="gbd_2023", hierarchy="gbd_2023", country_level=3
+    # The units rra-population-model rakes Populace to: GBD 2023's most
+    # detailed locations, except that India's states and New Zealand stand in
+    # for their urban and rural parts and their Maori and non-Maori
+    # populations, whose shapes are not good places; with northern Cyprus in
+    # Cyprus; and with the places GBD does not estimate. Its paths run world,
+    # super-region, region, country. It has no separate country shapes, so its
+    # units are checked for overlaps instead.
+    "raking_gbd_2023": ShapesVersion(
+        units="gbd_2023",
+        countries=None,
+        hierarchy="gbd_2023",
+        country_level=3,
+        raking=True,
     ),
 }
+
+
+def checksums(version: ShapesVersion) -> dict[str, str]:
+    """The SHA-256 of each file the version is read from, by path."""
+    sums = {}
+    for path in version.input_files():
+        digest = hashlib.sha256()
+        with path.open("rb") as f:
+            while chunk := f.read(1 << 24):
+                digest.update(chunk)
+        sums[str(path)] = digest.hexdigest()
+    return sums
 
 
 def unit_parents(version: ShapesVersion) -> pd.DataFrame:
@@ -120,7 +216,7 @@ def unit_parents(version: ShapesVersion) -> pd.DataFrame:
 
 
 def read_shapes(
-    shapes: str, crs: str, keep: list[int] | None = None
+    path: Path, crs: str, keep: list[int] | None = None
 ) -> gpd.GeoDataFrame:
     """A shapes file's `location_id` and geometry, projected to `crs`.
 
@@ -132,11 +228,11 @@ def read_shapes(
     its band of latitude. Coordinates are clamped to the world's bounds first,
     which moves those vertices by far less than a metre.
     """
-    frame = gpd.read_parquet(shapes_path(shapes), columns=["location_id", "geometry"])
+    frame = gpd.read_parquet(path, columns=["location_id", "geometry"])
     if keep is not None:
         frame = frame[frame["location_id"].isin(keep)]
     if frame.crs is None or not frame.crs.is_geographic:
-        msg = f"The {shapes} shapes are not in longitude and latitude."
+        msg = f"The shapes in {path} are not in longitude and latitude."
         raise ValueError(msg)
     clamped = shapely.transform(
         frame.geometry.to_numpy(), lambda xy: np.clip(xy, WORLD_MIN, WORLD_MAX)
@@ -166,7 +262,7 @@ def location_raster(
     """Each cell's location_id under a shapes version, made once and kept."""
     path = data.admin_raster_path(grid.name, shapes)
     if not path.exists():
-        values = rasterize(read_shapes(shapes, grid.crs), grid)
+        values = rasterize(read_shapes(shapes_path(shapes), grid.crs), grid)
         mkdir(path.parent, parents=True, exist_ok=True)
         partial = path.with_name(f"{path.stem}.part.tif")
         with rasterio.open(
