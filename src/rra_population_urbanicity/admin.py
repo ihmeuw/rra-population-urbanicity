@@ -47,15 +47,42 @@ def shapes_path(shapes: str) -> Path:
 
 @dataclass(frozen=True)
 class ShapesVersion:
-    """A set of the most detailed admin units, and what they should add up to."""
+    """A set of the most detailed admin units, and the countries they make up.
 
-    units: str  # the shapes of the most detailed units, such as lsae_1578_a2
-    countries: str  # the country shapes the units should cover
+    The units are the hierarchy's most detailed locations, and the countries
+    its locations at `country_level`: the position of the country in a path
+    from the top of the hierarchy. A shapes file may hold more than either,
+    as GBD's holds every level; only their shapes are used.
+    """
+
+    units: str  # the shapes file holding the units, such as lsae_1578_a2
+    countries: str  # the shapes file holding the countries
     hierarchy: str  # the hierarchy the units belong to
+    country_level: int = 1  # 1 when countries are just below the world
 
     @property
     def hierarchy_path(self) -> Path:
         return admin_inputs() / f"hierarchy_{self.hierarchy}.parquet"
+
+    def paths(self) -> pd.DataFrame:
+        hierarchy = pd.read_parquet(
+            self.hierarchy_path,
+            columns=["location_id", "path_to_top_parent", "most_detailed"],
+        )
+        return hierarchy.assign(path=hierarchy["path_to_top_parent"].str.split(","))
+
+    def unit_ids(self) -> list[int]:
+        hierarchy = self.paths()
+        ids: list[int] = hierarchy.loc[
+            hierarchy["most_detailed"] == 1, "location_id"
+        ].tolist()
+        return ids
+
+    def country_ids(self) -> list[int]:
+        hierarchy = self.paths()
+        at_level = hierarchy["path"].str.len() == self.country_level + 1
+        ids: list[int] = hierarchy.loc[at_level, "location_id"].tolist()
+        return ids
 
 
 SHAPES = {
@@ -63,32 +90,41 @@ SHAPES = {
     "lsae_1578_a2": ShapesVersion(
         units="lsae_1578_a2", countries="lsae_1578_a0", hierarchy="lsae_1578"
     ),
+    # GBD 2023's most detailed locations, which Populace is raked to. Its
+    # paths run world, super-region, region, country.
+    "gbd_2023": ShapesVersion(
+        units="gbd_2023", countries="gbd_2023", hierarchy="gbd_2023", country_level=3
+    ),
 }
 
 
 def unit_parents(version: ShapesVersion) -> pd.DataFrame:
-    """Each unit's admin 1 and country, from its path in the hierarchy.
+    """Each location's country and admin 1, from its path in the hierarchy.
 
-    Paths run from the top: 1 (the world), the country, then the admin 1.
+    The admin 1 is the location just below the country in the path, or the
+    country itself for a country and for anything above it, which have no
+    country of their own and are left out.
     """
-    hierarchy = pd.read_parquet(
-        version.hierarchy_path, columns=["location_id", "path_to_top_parent"]
-    )
-    path = hierarchy["path_to_top_parent"].str.split(",")
-    # Everything below the world.
-    below = path.str.len() > 1
-    hierarchy, path = hierarchy[below], path[below]
+    hierarchy = version.paths()
+    path = hierarchy["path"]
+    level = version.country_level
+    has_country = path.str.len() > level
+    hierarchy, path = hierarchy[has_country], path[has_country]
     return pd.DataFrame(
         {
             "location_id": hierarchy["location_id"].astype(np.int64),
-            "country_id": path.str[1].astype(np.int64),
-            "admin1_id": path.str[2].fillna(path.str[1]).astype(np.int64),
+            "country_id": path.str[level].astype(np.int64),
+            "admin1_id": path.str[level + 1].fillna(path.str[level]).astype(np.int64),
         }
     )
 
 
-def read_shapes(shapes: str, crs: str) -> gpd.GeoDataFrame:
-    """A shapes version's `location_id` and geometry, projected to `crs`.
+def read_shapes(
+    shapes: str, crs: str, keep: list[int] | None = None
+) -> gpd.GeoDataFrame:
+    """A shapes file's `location_id` and geometry, projected to `crs`.
+
+    With `keep`, only the shapes of those locations.
 
     Some shapes have vertices a hair past ±180° of longitude. A projection
     would wrap each one to the other side of the world, and the edges to it
@@ -97,6 +133,8 @@ def read_shapes(shapes: str, crs: str) -> gpd.GeoDataFrame:
     which moves those vertices by far less than a metre.
     """
     frame = gpd.read_parquet(shapes_path(shapes), columns=["location_id", "geometry"])
+    if keep is not None:
+        frame = frame[frame["location_id"].isin(keep)]
     if frame.crs is None or not frame.crs.is_geographic:
         msg = f"The {shapes} shapes are not in longitude and latitude."
         raise ValueError(msg)

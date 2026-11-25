@@ -57,8 +57,8 @@ class Shapes:
     tree: shapely.STRtree
 
 
-def load_shapes(name: str) -> Shapes:
-    frame = admin.read_shapes(name, MODEL_CRS)
+def load_shapes(name: str, keep: list[int]) -> Shapes:
+    frame = admin.read_shapes(name, MODEL_CRS, keep)
     geometry = frame.geometry.to_numpy()
     return Shapes(
         geometry, frame["location_id"].to_numpy(np.int64), shapely.STRtree(geometry)
@@ -176,7 +176,8 @@ def run(data: UrbanicityData, shapes: str, region: str | None) -> Path | None:
     if manifest_path.exists():
         return None
     version = admin.SHAPES[shapes]
-    units, countries = load_shapes(version.units), load_shapes(version.countries)
+    units = load_shapes(version.units, version.unit_ids())
+    countries = load_shapes(version.countries, version.country_ids())
     country_of = country_lookup(admin.unit_parents(version))
     selected = (
         blocks.all_blocks()

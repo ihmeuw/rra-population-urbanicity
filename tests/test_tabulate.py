@@ -136,6 +136,7 @@ def table_world(
                 "1,200,2001,21",
             ],
             "ihme_loc_id": ["G", "AAA", "BBB", "AAA_11", "AAA_12", "BBB_21"],
+            "most_detailed": [0, 0, 0, 1, 1, 1],
         }
     ).to_parquet(inputs / "hierarchy_test.parquet")
     pd.DataFrame(
@@ -502,7 +503,6 @@ def test_the_rt_deliverable(
     monkeypatch.setitem(admin.SHAPES, "lsae_1578_a2", admin.SHAPES[SHAPES])
     hierarchy_path = admin.SHAPES[SHAPES].hierarchy_path
     hierarchy = pd.read_parquet(hierarchy_path)
-    hierarchy["most_detailed"] = hierarchy["location_id"].isin([11, 12, 21]).astype(int)
     hierarchy["location_name"] = hierarchy["ihme_loc_id"]
     empty = {
         "location_id": 22,

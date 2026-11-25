@@ -69,6 +69,7 @@ def admin_world(
                 "1,100,1001,12",
                 "1,200,2001,21",
             ],
+            "most_detailed": [0, 0, 0, 0, 0, 1, 1, 1],
         }
     )
     hierarchy.to_parquet(admin.admin_inputs() / "hierarchy_test.parquet")
@@ -199,3 +200,57 @@ def test_shapes_a_hair_past_the_antimeridian_stay_on_their_side(
     )
     with pytest.raises(ValueError, match="not in longitude and latitude"):
         admin.read_shapes("edge", MODEL_CRS)
+
+
+@pytest.mark.usefixtures("small_frame")
+def test_units_and_countries_from_one_file_of_every_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # As GBD's: paths run world, super-region, region, country, unit, and one
+    # file holds the shapes of every level. Only the units are drawn, and
+    # only the country is checked against them.
+    model_root = tmp_path / "population-model"
+    monkeypatch.setattr(puc, "POPULATION_MODEL_ROOT", model_root)
+    write_shapes(
+        model_root,
+        "deep",
+        {
+            800: box(-400, -400, 400, 400),  # a region, larger than everything
+            300: box(-120, -200, 280, 80),
+            31: box(-120, -200, 0, 80),
+            32: box(0, -200, 280, 80),
+        },
+    )
+    pd.DataFrame(
+        {
+            "location_id": [1, 700, 800, 300, 31, 32],
+            "path_to_top_parent": [
+                "1",
+                "1,700",
+                "1,700,800",
+                "1,700,800,300",
+                "1,700,800,300,31",
+                "1,700,800,300,32",
+            ],
+            "most_detailed": [0, 0, 0, 0, 1, 1],
+        }
+    ).to_parquet(admin.admin_inputs() / "hierarchy_deep.parquet")
+    version = admin.ShapesVersion(
+        units="deep", countries="deep", hierarchy="deep", country_level=3
+    )
+    monkeypatch.setitem(admin.SHAPES, "deep", version)
+    assert version.unit_ids() == [31, 32]
+    assert version.country_ids() == [300]
+
+    data = UrbanicityData(tmp_path / "output")
+    manifest_path = admin_rasters.run(data, "deep", None)
+    assert manifest_path is not None
+    manifest = yaml.safe_load(manifest_path.read_text())
+    assert manifest["coverage_pixels"] == dict.fromkeys(admin_rasters.KINDS, 0)
+    with rasterio.open(data.admin_block_path("deep", Block(0, 0).key)) as src:
+        assert src.read(1)[0].tolist() == [31, 31, 31, 32]
+
+    parents = admin.unit_parents(version).set_index("location_id")
+    assert parents.loc[31].tolist() == [300, 31]
+    assert parents.loc[300].tolist() == [300, 300]
+    assert 800 not in parents.index  # above the countries
