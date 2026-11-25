@@ -358,6 +358,8 @@ def test_people_by_unit_and_class(classified: Path) -> None:
     assert manifest["pixel_check"]["worst_relative_gap"] == 0
     assert manifest["urban_clusters"] == "tabulated by unit through their id raster"
     assert manifest["time_points"]["2020q1"]["people_in_no_unit"] == 1
+    # Units 11, 12 and 21; location 0 is no unit and is not counted.
+    assert manifest["time_points"]["2020q1"]["units"] == 3
     assert manifest["time_points"]["2023q1"]["people"] == 70 + 99
 
 

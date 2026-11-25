@@ -340,7 +340,11 @@ def run(data: UrbanicityData, version: str, shapes: str) -> Path:
                     by_class["location_id"] == admin.NO_UNIT, "population"
                 ].sum()
             ),
-            "units": int(by_class["location_id"].nunique()),
+            "units": int(
+                by_class.loc[
+                    by_class["location_id"] != admin.NO_UNIT, "location_id"
+                ].nunique()
+            ),
         }
 
     first = spec.time_points[0]
