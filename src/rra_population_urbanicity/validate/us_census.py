@@ -60,7 +60,9 @@ def census_counties(path: Path) -> pd.DataFrame:
     )
 
 
-def our_counties(data: UrbanicityData, version: str, scheme: ClassScheme) -> pd.DataFrame:
+def our_counties(
+    data: UrbanicityData, version: str, scheme: ClassScheme
+) -> pd.DataFrame:
     """The classification's people and urban people by US county."""
     hierarchy = pd.read_parquet(
         admin.SHAPES[SHAPES].hierarchy_path,
@@ -88,15 +90,21 @@ def our_counties(data: UrbanicityData, version: str, scheme: ClassScheme) -> pd.
     urban = [scheme.code(key) for key in scheme.default_cut]
     people = table.groupby("location_id")["population"].sum()
     urban_people = (
-        table[table["class_code"].isin(urban)].groupby("location_id")["population"].sum()
+        table[table["class_code"].isin(urban)]
+        .groupby("location_id")["population"]
+        .sum()
     )
     return pd.DataFrame(
         {
             "state": counties["parent_id"].map(states).to_numpy(),
             "county": counties["location_name_short"].to_numpy(),
             "location_id": counties["location_id"].to_numpy(),
-            "population": people.reindex(counties["location_id"], fill_value=0.0).to_numpy(),
-            "urban": urban_people.reindex(counties["location_id"], fill_value=0.0).to_numpy(),
+            "population": people.reindex(
+                counties["location_id"], fill_value=0.0
+            ).to_numpy(),
+            "urban": urban_people.reindex(
+                counties["location_id"], fill_value=0.0
+            ).to_numpy(),
         }
     )
 
@@ -124,7 +132,9 @@ def summarise(table: pd.DataFrame) -> dict[str, Any]:
             ),
         },
         "national_urban_share": {
-            "census": float(states["census_urban"].sum() / states["census_population"].sum()),
+            "census": float(
+                states["census_urban"].sum() / states["census_population"].sum()
+            ),
             "ours": float(states["urban"].sum() / states["population"].sum()),
         },
         "state_urban_share": {
@@ -137,11 +147,15 @@ def summarise(table: pd.DataFrame) -> dict[str, Any]:
         "county_gap_points": {
             "mean_absolute": float(np.average(gap.abs(), weights=weights)),
             **{
-                f"people_within_{band}": float(weights[gap.abs() <= band].sum() / weights.sum())
+                f"people_within_{band}": float(
+                    weights[gap.abs() <= band].sum() / weights.sum()
+                )
                 for band in BANDS
             },
             "largest_in_large_counties": {
-                f"{matched.loc[i, 'county']}, {matched.loc[i, 'state']}": round(float(v), 1)
+                f"{matched.loc[i, 'county']}, {matched.loc[i, 'state']}": round(
+                    float(v), 1
+                )
                 for i, v in largest[:LARGEST_GAPS].items()
             },
         },

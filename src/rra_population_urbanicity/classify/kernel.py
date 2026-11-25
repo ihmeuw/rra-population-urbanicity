@@ -45,7 +45,10 @@ from rra_population_urbanicity.classifiers.kernel_density.scheme import BINARY
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import pixel_centres_in
 from rra_population_urbanicity.inputs import blocks
-from rra_population_urbanicity.inputs.aggregate import TASK_RESOURCES, blocks_for_bounds
+from rra_population_urbanicity.inputs.aggregate import (
+    TASK_RESOURCES as AGGREGATE_RESOURCES,
+)
+from rra_population_urbanicity.inputs.aggregate import blocks_for_bounds
 from rra_population_urbanicity.inputs.blocks import MODEL_CRS, Block
 from rra_population_urbanicity.inputs.providers import ghsl, populace
 from rra_population_urbanicity.specification import (
@@ -58,6 +61,8 @@ from rra_population_urbanicity.tabulate.population import read_units
 # The sets of units each run tabulates by.
 UNIT_SETS = ("lsae_1578_a2", "raking_gbd_2023")
 CONCURRENCY_LIMIT = 400
+# A populated block peaked at 6.1 GB in profiling (Bangladesh, 9 blocks).
+TASK_RESOURCES = {**AGGREGATE_RESOURCES, "memory": "10G"}
 EARTH_RADIUS_M = 6_378_137.0
 PIXEL_AREA_KM2 = (blocks.PIXEL_SIZE / 1000) ** 2
 CODES = [c.code for c in BINARY.classes]

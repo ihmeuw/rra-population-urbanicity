@@ -19,11 +19,17 @@ from rra_population_urbanicity.cli import purun, putask
 from rra_population_urbanicity.data import UrbanicityData
 from rra_population_urbanicity.grid import GRIDS
 from rra_population_urbanicity.inputs import blocks
-from rra_population_urbanicity.inputs.blocks import MODEL_CRS, Block
+from rra_population_urbanicity.inputs.blocks import Block
 from rra_population_urbanicity.inputs.providers import populace
 from rra_population_urbanicity.specification import ClassificationSpecification
 from rra_population_urbanicity.tabulate import classes, pixel_view, population
-from tests.conftest import TINY, write_model_raster, write_raster
+from tests.conftest import (
+    TINY,
+    frame_units,
+    write_model_raster,
+    write_raster,
+    write_units,
+)
 from tests.test_providers import POPULACE
 
 SHAPES = "test_a2"
@@ -50,16 +56,6 @@ def spec(grid: str = TINY.name) -> ClassificationSpecification:
     )
 
 
-def frame_units() -> npt.NDArray[np.int32]:
-    """Unit 11 west of the meridian, 12 north-east, 21 south-east, and one pixel in none."""
-    units = np.zeros((blocks.HEIGHT, blocks.WIDTH), dtype=np.int32)
-    units[:, :3] = 11
-    units[:2, 3:] = 12
-    units[2:, 3:] = 21
-    units[6, 9] = admin.NO_UNIT
-    return units
-
-
 def write_people(model_root: Path, time_point: str, people: npt.NDArray[Any]) -> None:
     size = blocks.GROUP_BLOCKS * blocks.BLOCK_PIXELS
     for group_x in range(2):
@@ -70,25 +66,6 @@ def write_people(model_root: Path, time_point: str, people: npt.NDArray[Any]) ->
         write_model_raster(
             path, people[:, group_x * size : (group_x + 1) * size], transform
         )
-
-
-def write_units(data: UrbanicityData, units: npt.NDArray[np.int32]) -> None:
-    for block in blocks.all_blocks():
-        path = data.admin_block_path(SHAPES, block.key)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        values = units[block.window.toslices()]
-        with rasterio.open(
-            path,
-            "w",
-            driver="GTiff",
-            height=values.shape[0],
-            width=values.shape[1],
-            count=1,
-            dtype="int32",
-            crs=MODEL_CRS,
-            transform=block.transform,
-        ) as dst:
-            dst.write(values, 1)
 
 
 def write_grid(data: UrbanicityData, time_point: str, cells: dict[Any, float]) -> None:
@@ -132,7 +109,7 @@ def table_world(
     write_people(model_root, "2020q1", people)
     people[0, 0] = 100
     write_people(model_root, "2023q1", people)
-    write_units(data, frame_units())
+    write_units(data, frame_units(), SHAPES)
     write_grid(data, "2020q1", {NW: 6, NE: 14, SW: 15, SE: 35})
     write_grid(data, "2023q1", {NW: 105, NE: 14, SW: 15, SE: 35})
 
@@ -248,7 +225,7 @@ def test_unit_rasters_are_checked(table_world: Path) -> None:
     data = UrbanicityData(table_world)
     units = frame_units()
     units[0, 0] = population.LOCATION_MASK + 1
-    write_units(data, units)
+    write_units(data, units, SHAPES)
     with pytest.raises(ValueError, match="too large"):
         population.read_units(data, SHAPES, Block(0, 0))
     path = data.admin_block_path(SHAPES, Block(1, 0).key)

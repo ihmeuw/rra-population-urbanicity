@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import pytest
 import yaml
@@ -15,7 +14,6 @@ from rra_population_urbanicity.classifiers.kernel_density.scheme import RURAL, U
 from rra_population_urbanicity.classify import kernel, runner
 from rra_population_urbanicity.cli import putask
 from rra_population_urbanicity.data import UrbanicityData
-from rra_population_urbanicity.grid import GRIDS
 from rra_population_urbanicity.inputs import blocks
 from rra_population_urbanicity.inputs.providers import ghsl, populace
 from rra_population_urbanicity.reference.ghsl import GhslRaster
@@ -23,88 +21,8 @@ from rra_population_urbanicity.specification import (
     ClassificationSpecification,
     PopulaceSource,
 )
-from tests.conftest import TINY, ghsl_spec, write_model_raster, write_raster
+from tests.conftest import KERNEL_UNIT_SETS, ghsl_spec, kernel_spec, write_raster
 from tests.test_aggregate import TINY_100M
-from tests.test_tabulate import frame_units, write_units
-
-UNIT_SETS = ("units_a", "units_b")
-TIME_POINTS = ["2020q1", "2023q1"]
-
-
-def frame_people(time_point: str) -> npt.NDArray[np.float64]:
-    """625 people per km² west of column 5 and 62.5 east of it; block (2, 1) empty.
-
-    In 2023 the top-left pixel has 100 people.
-    """
-    people = np.full((blocks.HEIGHT, blocks.WIDTH), 0.1)
-    people[:, :5] = 1.0
-    people[4:, 8:] = 0.0
-    if time_point == "2023q1":
-        people[0, 0] = 100.0
-    return people
-
-
-def frame_land(data: UrbanicityData, window: Window) -> npt.NDArray[np.float32]:
-    """All land on the frame, and none beyond it."""
-    land = np.zeros((int(window.height), int(window.width)), dtype=np.float32)
-    rows = slice(max(-int(window.row_off), 0), blocks.HEIGHT - int(window.row_off))
-    cols = slice(max(-int(window.col_off), 0), blocks.WIDTH - int(window.col_off))
-    land[rows, cols] = 1.0
-    return land
-
-
-def kernel_spec() -> ClassificationSpecification:
-    # A disc of one pixel's radius: the pixel and its four neighbours.
-    return ClassificationSpecification.model_validate(
-        {
-            "population": {
-                "source": "populace",
-                "model_version": "2026_10_02.001",
-                "resolution": "40",
-            },
-            "grid": TINY.name,
-            "land": {"source": "ghs_land", "release": "r2022a"},
-            "time_points": TIME_POINTS,
-            "method": {
-                "name": "kernel_density",
-                "parameter_set": "kernel_default",
-                "parameters": {"radius_m": 40.0},
-            },
-        }
-    )
-
-
-@pytest.fixture
-def kernel_world(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_frame: None
-) -> Path:
-    monkeypatch.setitem(GRIDS, TINY.name, TINY)
-    model_root = tmp_path / "population-model"
-    monkeypatch.setattr(puc, "POPULATION_MODEL_ROOT", model_root)
-    for time_point in TIME_POINTS:
-        write_model_raster(
-            model_root / f"{time_point}.tif",
-            frame_people(time_point),
-            blocks.MODEL_TRANSFORM,
-        )
-    monkeypatch.setattr(
-        populace, "vrt_path", lambda root, source, tp: root / f"{tp}.tif"
-    )
-    monkeypatch.setattr(kernel, "read_land", frame_land)
-    monkeypatch.setattr(kernel, "UNIT_SETS", UNIT_SETS)
-    root = tmp_path / "output"
-    data = UrbanicityData(root)
-    for shapes in UNIT_SETS:
-        monkeypatch.setattr("tests.test_tabulate.SHAPES", shapes)
-        write_units(data, frame_units())
-
-    def run_parallel(**kwargs: Any) -> str:
-        for key in kwargs["node_args"]["block-key"]:
-            kernel.run_block(data, kwargs["task_args"]["version"], key)
-        return "done"
-
-    monkeypatch.setattr(jobmon, "run_parallel", run_parallel)
-    return root
 
 
 def read_tabulation(
@@ -135,7 +53,7 @@ def test_the_kernel_classifies_and_tabulates_every_block(kernel_world: Path) -> 
         (21, URBAN): 10.0,
         (21, RURAL): 1.9,
     }
-    for shapes in UNIT_SETS:
+    for shapes in KERNEL_UNIT_SETS:
         assert read_tabulation(kernel_world, version, shapes, "2020q1") == expected
     later = read_tabulation(kernel_world, version, "units_a", "2023q1")
     assert later[(11, URBAN)] == 120.0

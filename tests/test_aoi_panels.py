@@ -15,8 +15,7 @@ from rra_population_urbanicity.inputs.blocks import MODEL_CRS
 from rra_population_urbanicity.reference import us_census
 from rra_population_urbanicity.specification import ClassificationSpecification
 from rra_population_urbanicity.validate import aoi_panels
-from tests.conftest import TINY, write_raster
-from tests.test_kernel_run import kernel_spec, kernel_world  # noqa: F401 (a fixture)
+from tests.conftest import TINY, kernel_spec, write_raster
 
 # The small frame, in degrees: 120 m west to 280 m east, 80 m north to 200 m south.
 FRAME = (-0.0010, -0.0017, 0.0025, 0.0007)

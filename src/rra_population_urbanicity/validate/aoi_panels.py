@@ -70,7 +70,10 @@ def area_window(bounds: tuple[float, float, float, float]) -> Window:
     col0, row0 = ~blocks.MODEL_TRANSFORM @ (x0, y1)
     col1, row1 = ~blocks.MODEL_TRANSFORM @ (x1, y0)
     return Window(
-        int(col0), int(row0), int(np.ceil(col1)) - int(col0), int(np.ceil(row1)) - int(row0)
+        int(col0),
+        int(row0),
+        int(np.ceil(col1)) - int(col0),
+        int(np.ceil(row1)) - int(row0),
     )
 
 
@@ -90,7 +93,9 @@ def classes(
             data, spec.method.parameters, spec.population, window, time_point
         )
         return codes
-    transform = blocks.MODEL_TRANSFORM @ Affine.translation(window.col_off, window.row_off)
+    transform = blocks.MODEL_TRANSFORM @ Affine.translation(
+        window.col_off, window.row_off
+    )
     return window_classes(
         transform,
         (int(window.height), int(window.width)),
@@ -102,7 +107,9 @@ def classes(
 
 def urban_area_outlines(data: UrbanicityData, window: Window) -> npt.NDArray[np.bool_]:
     """The edges of the Census's urban areas on the pixels of a window."""
-    transform = blocks.MODEL_TRANSFORM @ Affine.translation(window.col_off, window.row_off)
+    transform = blocks.MODEL_TRANSFORM @ Affine.translation(
+        window.col_off, window.row_off
+    )
     shape = (int(window.height), int(window.width))
     west, north = transform @ (0, 0)
     east, south = transform @ (shape[1], shape[0])
@@ -134,7 +141,8 @@ def draw(
         for v in versions
     ]
     schemes = [
-        ClassScheme.from_yaml(data.classification_root(v) / "scheme.yaml") for v in versions
+        ClassScheme.from_yaml(data.classification_root(v) / "scheme.yaml")
+        for v in versions
     ]
     populace = [s.population for s in specs if isinstance(s.population, PopulaceSource)]
     if not populace:
@@ -205,7 +213,9 @@ def validate_aoi_panels(
 ) -> None:
     """Draw panels of fixed areas for one or more classifications."""
     data = UrbanicityData(output_dir)
-    out_dir = data.classification_root(versions[0]) / "validation" / "aoi_panels" / time_point
+    out_dir = (
+        data.classification_root(versions[0]) / "validation" / "aoi_panels" / time_point
+    )
     if unknown := set(areas) - set(AREAS):
         msg = f"Unknown areas {sorted(unknown)}. Choose from {list(AREAS)}."
         raise click.BadParameter(msg)

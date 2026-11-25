@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 import pandas as pd
 import pytest
 import yaml
@@ -60,7 +59,10 @@ def census_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 "Texas",
                 "Harris",
             ],
-            "ihme_loc_id": ["USA", *[f"USA_{i}" for i in (600, 601, 602, 610, 611, 620, 621)]],
+            "ihme_loc_id": [
+                "USA",
+                *[f"USA_{i}" for i in (600, 601, 602, 610, 611, 620, 621)],
+            ],
             "most_detailed": [0, 0, 1, 1, 0, 1, 0, 1],
         }
     ).to_parquet(admin.admin_inputs() / "hierarchy_us.parquet")
